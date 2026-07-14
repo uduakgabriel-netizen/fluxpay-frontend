@@ -4,12 +4,7 @@ import {
   WalletProvider,
 } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-  TorusWalletAdapter,
-  // LedgerWalletAdapter,
-} from '@solana/wallet-adapter-wallets'
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare'
 require('@solana/wallet-adapter-react-ui/styles.css')
 
 // Cast to any to bypass the ReactNode/bigint incompatibility
@@ -37,12 +32,12 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
   )
 
   const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-      new TorusWalletAdapter(),
-      // new LedgerWalletAdapter(),
-    ],
+    () => {
+      if (typeof window === 'undefined') return []
+      return [
+        new SolflareWalletAdapter(),
+      ]
+    },
     []
   )
 
