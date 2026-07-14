@@ -1,0 +1,8 @@
+allowBuilds:
+  "@stellar/stellar-sdk": false
+  "blake-hash": true
+  "bufferutil": false
+  "protobufjs": true
+  "tiny-secp256k1": true
+  "usb": false
+  "utf-8-validate": false
