@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 3. Sign the message with wallet
     const signatureBytes = await signMessage(encodedMessage)
-    const signature = Buffer.from(signatureBytes).toString('base64')
+    const signature = btoa(String.fromCharCode.apply(null, Array.from(signatureBytes)))
 
     // 4. Verify with backend
     const result = await authApi.verifyWallet({
@@ -122,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const message = `Sign this message to verify your wallet: ${nonce}`
     const encodedMessage = new TextEncoder().encode(message)
     const signatureBytes = await signMessage(encodedMessage)
-    const signature = Buffer.from(signatureBytes).toString('base64')
+    const signature = btoa(String.fromCharCode.apply(null, Array.from(signatureBytes)))
 
     // 3. Signup with backend
     const result = await authApi.signup({
