@@ -1,0 +1,67 @@
+import React, { useMemo } from 'react'
+import {
+  ConnectionProvider,
+  WalletProvider,
+} from '@solana/wallet-adapter-react'
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare'
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
+require('@solana/wallet-adapter-react-ui/styles.css')
+
+// Cast to any to bypass the ReactNode/bigint incompatibility
+const Connection = ConnectionProvider as any
+const Wallet = WalletProvider as any
+const WalletModal = WalletModalProvider as any
+
+interface SolanaWalletProviderProps {
+  children: React.ReactNode
+}
+
+export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ children }) => {
+  const endpoint = useMemo(
+    () => {
+      if (process.env.NEXT_PUBLIC_SOLANA_RPC_URL) {
+        return process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+      }
+      // Fallback: use network env var to pick the right RPC
+      const network = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'mainnet-beta';
+      return network === 'devnet'
+        ? 'https://api.devnet.solana.com'
+        : 'https://mainnet.helius-rpc.com/?api-key=5e93742e-974f-47a4-a053-c60784b5c0c5';
+    },
+    []
+  )
+
+  const wallets = useMemo(
+    () => {
+      if (typeof window === 'undefined') return []
+      
+      const adapters: any[] = []
+      
+      // Safeguard check for Phantom extension on window
+      if (typeof window !== 'undefined') {
+        const anyWindow = window as any;
+        if (anyWindow.solana) {
+          adapters.push(new PhantomWalletAdapter())
+        } else {
+          // Fallback to showing it in the list even if not yet fully loaded
+          adapters.push(new PhantomWalletAdapter())
+        }
+      }
+      
+      adapters.push(new SolflareWalletAdapter())
+      return adapters
+    },
+    []
+  )
+
+  return (
+    <Connection endpoint={endpoint}>
+      <Wallet wallets={wallets} autoConnect>
+        <WalletModal>
+          {children}
+        </WalletModal>
+      </Wallet>
+    </Connection>
+  )
+}
