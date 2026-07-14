@@ -5,6 +5,7 @@ import {
 } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare'
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom'
 require('@solana/wallet-adapter-react-ui/styles.css')
 
 // Cast to any to bypass the ReactNode/bigint incompatibility
@@ -34,9 +35,22 @@ export const SolanaWalletProvider: React.FC<SolanaWalletProviderProps> = ({ chil
   const wallets = useMemo(
     () => {
       if (typeof window === 'undefined') return []
-      return [
-        new SolflareWalletAdapter(),
-      ]
+      
+      const adapters: any[] = []
+      
+      // Safeguard check for Phantom extension on window
+      if (typeof window !== 'undefined') {
+        const anyWindow = window as any;
+        if (anyWindow.solana) {
+          adapters.push(new PhantomWalletAdapter())
+        } else {
+          // Fallback to showing it in the list even if not yet fully loaded
+          adapters.push(new PhantomWalletAdapter())
+        }
+      }
+      
+      adapters.push(new SolflareWalletAdapter())
+      return adapters
     },
     []
   )
