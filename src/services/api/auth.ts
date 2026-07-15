@@ -55,8 +55,21 @@ export interface VerifyData {
 // ─── API Functions ──────────────────────────────────────────
 
 export async function requestNonce(walletAddress: string): Promise<NonceResponse> {
-  const { data } = await apiClient.post<NonceResponse>('/auth/nonce', { walletAddress })
-  return data
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://fluxpay-solana-payment-gateway01.onrender.com';
+  const response = await fetch(`${API_URL}/api/auth/nonce`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ walletAddress }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to request nonce');
+  }
+
+  return response.json();
 }
 
 export async function verifyWallet(payload: VerifyData): Promise<AuthResponse> {
