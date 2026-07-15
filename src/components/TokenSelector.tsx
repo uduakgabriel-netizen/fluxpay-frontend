@@ -88,8 +88,16 @@ export default function TokenSelector({ selected, onSelect, disabled }: TokenSel
           setSearchResults(json.data);
         }
       } catch (err) {
-        console.error('Search failed', err);
-        setError('Failed to fetch tokens. Please try again.');
+        console.error('Search failed, using fallback tokens', err);
+        // Fallback to local filtering of COMMON_TOKENS
+        const queryLower = query.toLowerCase();
+        const filtered = COMMON_TOKENS.filter(
+          t => t.symbol.toLowerCase().includes(queryLower) ||
+               t.name.toLowerCase().includes(queryLower) ||
+               t.mint.toLowerCase() === queryLower
+        );
+        setSearchResults(filtered);
+        setError(null); // Keep error null so user can select local fallbacks
       } finally {
         setIsSearching(false);
       }
