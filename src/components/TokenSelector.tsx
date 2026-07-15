@@ -11,7 +11,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL
       ? 'http://localhost:5000/api'
       : 'https://fluxpay-backend.onrender.com/api');
 
-const DEFAULT_ICON = 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png';
+const DEFAULT_ICON = '/logo.png';
 
 export interface Token {
   symbol: string;
