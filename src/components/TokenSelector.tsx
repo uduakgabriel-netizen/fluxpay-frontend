@@ -5,9 +5,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, ChevronDown, CheckCircle2, Loader2, Zap } from 'lucide-react';
 
-const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-  ? 'http://localhost:5000/api'
-  : 'https://api.fluxpay.com/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api`
+  : (typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? 'http://localhost:5000/api'
+      : 'https://fluxpay-backend.onrender.com/api');
 
 const DEFAULT_ICON = 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png';
 
@@ -40,6 +42,7 @@ export default function TokenSelector({ selected, onSelect, disabled }: TokenSel
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Token[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -64,6 +67,7 @@ export default function TokenSelector({ selected, onSelect, disabled }: TokenSel
   useEffect(() => {
     if (!query) {
       setSearchResults([]);
+      setError(null);
       return;
     }
 
@@ -72,15 +76,20 @@ export default function TokenSelector({ selected, onSelect, disabled }: TokenSel
     }
 
     setIsSearching(true);
+    setError(null);
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`${API_BASE}/tokens/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const json = await res.json();
         if (json.data) {
           setSearchResults(json.data);
         }
       } catch (err) {
         console.error('Search failed', err);
+        setError('Failed to fetch tokens. Please try again.');
       } finally {
         setIsSearching(false);
       }
@@ -170,6 +179,10 @@ export default function TokenSelector({ selected, onSelect, disabled }: TokenSel
                     </button>
                   ))}
                 </div>
+              </div>
+            ) : error ? (
+              <div className="p-8 text-center text-sm text-red-400">
+                {error}
               </div>
             ) : searchResults.length === 0 && !isSearching ? (
               <div className="p-8 text-center text-sm text-gray-500">
