@@ -1,18 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/router'
 import DashboardLayout from '@/components/dashboard/layout'
 import { Search, Download, CreditCard } from 'lucide-react'
 import { listPayments, exportPayments, type Payment, type PaymentListResponse } from '@/services/api/payments'
-
-const statusStyles: Record<string, string> = {
-  COMPLETED: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  PENDING: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  FAILED: 'bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400',
-  EXPIRED: 'bg-gray-100 dark:bg-gray-500/10 text-gray-500 dark:text-gray-400',
-  CONFIRMED: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400',
-  SETTLING: 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400',
-}
+import PageTransition from '@/components/shared/PageTransition'
+import StatusBadge from '@/components/shared/StatusBadge'
+import { RowSkeleton } from '@/components/shared/Skeleton'
+import EmptyState from '@/components/shared/EmptyState'
+import ErrorCard from '@/components/shared/ErrorCard'
 
 export default function PaymentsPage() {
+  const router = useRouter()
   const [payments, setPayments] = useState<Payment[]>([])
   const [meta, setMeta] = useState<PaymentListResponse['meta'] | null>(null)
   const [summary, setSummary] = useState<PaymentListResponse['summary'] | null>(null)
@@ -68,7 +66,7 @@ export default function PaymentsPage() {
 
   return (
     <DashboardLayout pageTitle="Payments">
-      <div className="space-y-6">
+      <PageTransition className="space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -122,19 +120,27 @@ export default function PaymentsPage() {
         {/* Table */}
         <div className="bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-white/[0.06] rounded-xl overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center">
-              <p className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">Loading payments...</p>
+            <div className="p-6 space-y-3">
+              <RowSkeleton count={5} />
             </div>
           ) : error ? (
-            <div className="p-12 text-center">
-              <p className="text-sm text-red-500">{error}</p>
-              <button onClick={fetchPayments} className="mt-2 text-sm text-[#8B5CF6] hover:underline cursor-pointer">Retry</button>
+            <div className="p-6">
+              <ErrorCard
+                type="network"
+                title="Unable to load payments"
+                message={error}
+                onRetry={fetchPayments}
+              />
             </div>
           ) : payments.length === 0 ? (
-            <div className="p-12 text-center">
-              <CreditCard size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-sm text-gray-500 dark:text-gray-400">No payments found</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Payments will appear here once created</p>
+            <div className="p-8">
+              <EmptyState
+                type="transactions"
+                title="No payments found"
+                description={search ? `No payments matching "${search}" found.` : "You haven't processed any customer payments yet."}
+                actionLabel="Swap Crypto to Fiat"
+                onAction={() => router.push('/dashboard/swap')}
+              />
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -157,9 +163,7 @@ export default function PaymentsPage() {
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-white">{formatAmount(p.amount)}</td>
                       <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{p.token}</td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex px-2.5 py-1 rounded-full text-[11px] font-semibold ${statusStyles[p.status] || statusStyles['PENDING']}`}>
-                          {p.status.charAt(0) + p.status.slice(1).toLowerCase()}
-                        </span>
+                        <StatusBadge status={p.status} />
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{formatDate(p.createdAt)}</td>
                     </tr>
@@ -176,7 +180,7 @@ export default function PaymentsPage() {
             </div>
           )}
         </div>
-      </div>
+      </PageTransition>
     </DashboardLayout>
   )
 }

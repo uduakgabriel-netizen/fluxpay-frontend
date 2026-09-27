@@ -2,14 +2,9 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ExternalLink } from 'lucide-react'
 import { getPaymentStats, type PaymentStats } from '@/services/api/payments'
-
-const statusStyles: Record<string, string> = {
-  COMPLETED: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
-  PENDING: 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
-  FAILED: 'bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-500/20',
-  CONFIRMED: 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20',
-  EXPIRED: 'bg-gray-100 dark:bg-gray-500/10 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-500/20',
-}
+import StatusBadge from '@/components/shared/StatusBadge'
+import { RowSkeleton } from '@/components/shared/Skeleton'
+import EmptyState from '@/components/shared/EmptyState'
 
 function formatWallet(wallet: string | null): string {
   return wallet ? `${wallet.slice(0, 4)}...${wallet.slice(-4)}` : '—'
@@ -53,13 +48,16 @@ export default function RecentTransactions() {
       </div>
 
       {loading ? (
-        <div className="p-10 text-center">
-          <p className="text-sm text-gray-400 dark:text-gray-500 animate-pulse">Loading...</p>
+        <div className="p-5 space-y-3">
+          <RowSkeleton count={4} />
         </div>
       ) : transactions.length === 0 ? (
-        <div className="p-10 text-center">
-          <p className="text-sm text-gray-500 dark:text-gray-400">No transactions yet</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Payments will appear here once created</p>
+        <div className="p-6">
+          <EmptyState
+            type="transactions"
+            title="No transactions yet"
+            description="Payments will appear here once customers checkout or swap."
+          />
         </div>
       ) : (
         <>
@@ -95,17 +93,17 @@ export default function RecentTransactions() {
                       <span className="text-xs text-gray-400 dark:text-gray-500 ml-1.5">{tx.token}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border ${statusStyles[tx.status] || statusStyles['PENDING']}`}>
-                        {tx.status.charAt(0) + tx.status.slice(1).toLowerCase()}
-                      </span>
+                      <StatusBadge status={tx.status} />
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-500 dark:text-gray-400">{timeAgo(tx.createdAt)}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button className="text-xs font-semibold text-[#8B5CF6] hover:text-[#14B8A6] transition-colors cursor-pointer">
-                        View
-                      </button>
+                      <Link href="/dashboard/payments">
+                        <span className="text-xs font-semibold text-[#8B5CF6] hover:text-[#14B8A6] transition-colors cursor-pointer">
+                          View
+                        </span>
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -122,9 +120,7 @@ export default function RecentTransactions() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-mono font-medium text-[#8B5CF6]">{tx.id.slice(0, 12)}...</span>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusStyles[tx.status] || statusStyles['PENDING']}`}>
-                    {tx.status.charAt(0) + tx.status.slice(1).toLowerCase()}
-                  </span>
+                  <StatusBadge status={tx.status} size="sm" />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-900 dark:text-white">

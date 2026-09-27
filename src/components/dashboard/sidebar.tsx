@@ -16,6 +16,8 @@ import {
   Repeat,
   Settings,
   LifeBuoy,
+  SlidersHorizontal,
+  Building2,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -34,8 +36,9 @@ const navSections = [
     label: 'MAIN',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Swap to Fiat', href: '/dashboard/swap', icon: ArrowLeftRight },
       { name: 'Payments', href: '/dashboard/payments', icon: CreditCard },
-      { name: 'Refunds', href: '/dashboard/refunds', icon: ArrowLeftRight },
+      { name: 'Refunds', href: '/dashboard/refunds', icon: Repeat },
       { name: 'Settlements', href: '/dashboard/settlements', icon: Banknote },
       { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
     ],
@@ -59,6 +62,8 @@ const navSections = [
     label: 'SETTINGS',
     items: [
       { name: 'Settings', href: '/dashboard/settings', icon: Settings },
+      { name: 'Settlement Preference', href: '/dashboard/settings/settlement', icon: SlidersHorizontal },
+      { name: 'Payout Accounts', href: '/dashboard/settings/payout-accounts', icon: Building2 },
       { name: 'Support', href: '/dashboard/support', icon: LifeBuoy },
     ],
   },
@@ -69,7 +74,9 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
   const { logout } = useAuth()
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') return router.pathname === '/dashboard'
+    if (href === '/dashboard' || href === '/dashboard/settings') {
+      return router.pathname === href
+    }
     return router.pathname.startsWith(href)
   }
 

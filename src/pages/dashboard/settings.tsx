@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import DashboardLayout from '@/components/dashboard/layout'
-import { User, Bell, Shield, DollarSign } from 'lucide-react'
+import Link from 'next/link'
+import { User, Bell, Shield, DollarSign, SlidersHorizontal, Building2, ChevronRight } from 'lucide-react'
 import TokenSelector from '@/components/token-selector/TokenSelector'
 import { useAuth } from '@/contexts/AuthContext'
 import { updateProfile } from '@/services/api/auth'
 import apiClient from '@/services/api/client'
 import { SUPPORTED_TOKENS, type Token, getTokenByMint } from '@/config/tokens'
+import PageTransition from '@/components/shared/PageTransition'
+import { useToast } from '@/components/shared/Toast'
 
 export default function SettingsPage() {
+  const toast = useToast()
   const { merchant, refreshMerchant } = useAuth()
   const [businessName, setBusinessName] = useState(merchant?.businessName || '')
   const [email, setEmail] = useState(merchant?.email || '')
@@ -46,8 +50,11 @@ export default function SettingsPage() {
       await updateProfile({ businessName, email })
       await refreshMerchant()
       setSaveMsg('Profile updated successfully!')
+      toast.success('Profile updated successfully!')
     } catch (err: any) {
-      setSaveMsg(err?.response?.data?.error || 'Failed to update profile')
+      const msg = err?.response?.data?.error || 'Failed to update profile'
+      setSaveMsg(msg)
+      toast.error(msg)
     } finally {
       setSaving(false)
       setTimeout(() => setSaveMsg(''), 3000)
@@ -57,6 +64,7 @@ export default function SettingsPage() {
   const handleSaveToken = async () => {
     if (!selectedToken) {
       setTokenMsg('Please select a token')
+      toast.warning('Please select a token')
       return
     }
 
@@ -72,10 +80,13 @@ export default function SettingsPage() {
 
       setCurrentToken(selectedToken)
       setTokenMsg('Token preference updated successfully!')
+      toast.success('Token preference updated successfully!')
       await refreshMerchant()
     } catch (err: any) {
       console.error('Error saving token preference:', err)
-      setTokenMsg(err.response?.data?.error || err.message || 'Failed to save preference')
+      const msg = err.response?.data?.error || err.message || 'Failed to save preference'
+      setTokenMsg(msg)
+      toast.error(msg)
     } finally {
       setSavingToken(false)
       setTimeout(() => setTokenMsg(''), 3000)
@@ -83,15 +94,56 @@ export default function SettingsPage() {
   }
 
   const toggleNotif = (key: keyof typeof notifs) => {
-    setNotifs(prev => ({ ...prev, [key]: !prev[key] }))
+    setNotifs(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      toast.info(`Updated notification preferences`)
+      return next
+    })
   }
 
   return (
     <DashboardLayout pageTitle="Settings">
-      <div className="space-y-6 max-w-3xl">
+      <PageTransition className="space-y-6 max-w-3xl">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage your account preferences</p>
+        </div>
+
+        {/* Fiat Settlement & Payouts Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Link href="/dashboard/settings/settlement">
+            <div className="p-5 rounded-2xl bg-white dark:bg-gray-900/50 border border-purple-500/20 hover:border-[#8B5CF6] transition-all group cursor-pointer shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-[#8B5CF6] flex items-center justify-center">
+                  <SlidersHorizontal size={20} />
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-[#8B5CF6] group-hover:translate-x-1 transition-all" />
+              </div>
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-[#8B5CF6] transition-colors">
+                Settlement Preference
+              </h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Choose between receiving payments in Crypto or automatic Fiat bank transfers
+              </p>
+            </div>
+          </Link>
+
+          <Link href="/dashboard/settings/payout-accounts">
+            <div className="p-5 rounded-2xl bg-white dark:bg-gray-900/50 border border-purple-500/20 hover:border-[#8B5CF6] transition-all group cursor-pointer shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-[#8B5CF6] flex items-center justify-center">
+                  <Building2 size={20} />
+                </div>
+                <ChevronRight size={16} className="text-slate-400 group-hover:text-[#8B5CF6] group-hover:translate-x-1 transition-all" />
+              </div>
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white group-hover:text-[#8B5CF6] transition-colors">
+                Payout Accounts
+              </h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Manage and verify your bank accounts (OPay, GTBank, Kuda, etc.)
+              </p>
+            </div>
+          </Link>
         </div>
 
         {/* Profile */}
@@ -278,7 +330,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </div>
+      </PageTransition>
     </DashboardLayout>
   )
 }

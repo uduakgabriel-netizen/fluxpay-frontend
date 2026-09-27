@@ -11,6 +11,25 @@
   animation: animateIn 0.5s ease-out forwards;
 }
 
+/* Shimmer sweep animation (1.5s loop) */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}
+
+/* Error shake animation */
+@keyframes shakeError {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shakeError 0.4s ease-in-out;
+}
+
 @keyframes animateIn {
   from {
     opacity: 0;
@@ -452,4 +471,148 @@ code {
   background-image: 
     linear-gradient(rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.8)),
     conic-gradient(from var(--angle), #7c3aed, #0d9488, #3b82f6, #8b5cf6, #7c3aed);
+}
+
+/* ======================================
+   CONSUMER UI SPECIFICATION STYLES
+   ====================================== */
+
+.consumer-bg {
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark .consumer-bg {
+  background: radial-gradient(circle at 50% 0%, #2e1065 0%, #1e1b4b 35%, #0B0F19 100%);
+  color: #ffffff;
+}
+
+html:not(.dark) .consumer-bg {
+  background: radial-gradient(circle at 50% 0%, #f5f3ff 0%, #f8fafc 45%, #ffffff 100%);
+  color: #0f172a;
+}
+
+.consumer-glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 1.25rem;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dark .consumer-glass {
+  background: rgba(19, 27, 46, 0.75);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), 0 0 15px rgba(139, 92, 246, 0.08);
+}
+
+html:not(.dark) .consumer-glass {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 10px 30px -10px rgba(139, 92, 246, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.consumer-glass-interactive {
+  background: rgba(30, 31, 38, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 1.25rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.consumer-glass-interactive:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.2);
+  transform: translateY(-2px);
+}
+
+.btn-consumer-primary {
+  background-color: #8b5cf6;
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 15px rgba(139, 92, 246, 0.35);
+}
+
+.btn-consumer-primary:hover {
+  background-color: #7c3aed;
+  box-shadow: 0 6px 25px rgba(139, 92, 246, 0.55);
+  transform: scale(1.02);
+}
+
+.btn-consumer-primary:active {
+  transform: scale(0.98);
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.animate-shake {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.7);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+@keyframes checkmarkDraw {
+  0% {
+    stroke-dashoffset: 50;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-checkmark-draw {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: checkmarkDraw 0.6s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(139, 92, 246, 0.1) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+/* ======================================
+   ACCESSIBILITY & FOCUS RINGS (WCAG AA)
+   ====================================== */
+:focus-visible {
+  outline: 2px solid #8b5cf6 !important;
+  outline-offset: 2px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

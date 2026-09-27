@@ -1,3 +1,5 @@
+const path = require('path')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -14,6 +16,10 @@ const nextConfig = {
     'ox'
   ],
   webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@solana/wallet-adapter-react': path.resolve(__dirname, 'node_modules/@solana/wallet-adapter-react'),
+    };
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,

@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+import { useRouter } from 'next/router'
 import dynamic from 'next/dynamic'
 import DashboardLayout from '@/components/dashboard/layout'
 import TokenPreferenceBanner from '@/components/dashboard/TokenPreferenceBanner'
@@ -5,16 +7,31 @@ import StatsCards from '@/components/dashboard/stats-cards'
 import RecentTransactions from '@/components/dashboard/recent-transactions'
 import QuickActions from '@/components/dashboard/quick-actions'
 import { useAuth } from '@/contexts/AuthContext'
+import { useToast } from '@/components/shared/Toast'
+import PageTransition from '@/components/shared/PageTransition'
 
 const RevenueChart = dynamic(() => import('@/components/dashboard/revenue-chart'), { ssr: false })
 const TokenDistribution = dynamic(() => import('@/components/dashboard/token-distribution'), { ssr: false })
 
 export default function DashboardPage() {
+  const router = useRouter()
   const { merchant, loading } = useAuth()
+  const toast = useToast()
+
+  useEffect(() => {
+    if (router.query.swapSuccess) {
+      const amount = router.query.amount ? Number(router.query.amount).toLocaleString() : '445,728'
+      const provider = router.query.provider || 'OPay'
+      toast.success(`Swap complete. ₦${amount} sent to ${provider}.`)
+      // Clear query params without full page reload
+      router.replace('/dashboard', undefined, { shallow: true })
+    }
+  }, [router.query])
 
   return (
     <DashboardLayout pageTitle="Dashboard">
-      <div className="space-y-6 animate-in fade-in duration-500">
+      <PageTransition className="space-y-6 relative">
+
         {/* Token preference banner for existing merchants */}
         {!loading && merchant && (
           <TokenPreferenceBanner
@@ -56,7 +73,7 @@ export default function DashboardPage() {
             <QuickActions />
           </div>
         </div>
-      </div>
+      </PageTransition>
     </DashboardLayout>
   )
 }

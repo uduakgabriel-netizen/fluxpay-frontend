@@ -1,7 +1,15 @@
 import { useRouter } from 'next/router'
-import { Link as LinkIcon, Key, Webhook, BookOpen } from 'lucide-react'
+import { Link as LinkIcon, Key, Webhook, BookOpen, ArrowLeftRight } from 'lucide-react'
 
 const actions = [
+  {
+    title: 'Swap to Fiat',
+    description: 'Convert crypto to cash directly to bank',
+    icon: ArrowLeftRight,
+    href: '/dashboard/swap',
+    gradient: 'from-[#8B5CF6] via-indigo-600 to-[#14B8A6]',
+    featured: true,
+  },
   {
     title: 'Create Payment Link',
     description: 'Generate a shareable payment link for your customers',

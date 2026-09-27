@@ -61,7 +61,7 @@ const Home: NextPage = () => {
           </motion.a>
 
           {/* Desktop Navigation */}
-          <div className="hidden lg:flex items-center gap-10">
+          <div className="hidden lg:flex items-center gap-8">
             {['Home', 'Pricing', 'Docs'].map((item, i) => (
               <motion.a
                 key={item}
@@ -75,6 +75,16 @@ const Home: NextPage = () => {
                 <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-teal-500 dark:bg-teal-400 transition-all group-hover:w-full" />
               </motion.a>
             ))}
+            <motion.a
+              href="/sell"
+              className="font-semibold transition-all relative group cursor-pointer text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-1.5"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+            >
+              <span>Sell Crypto</span>
+              <span className="text-[10px] bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold px-1.5 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">New</span>
+            </motion.a>
           </div>
 
           {/* Desktop Right Section */}
@@ -166,7 +176,7 @@ const Home: NextPage = () => {
               <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-4 mb-8 sm:mb-12">
                 <motion.a
                   href="/signup"
-                  className="group relative w-full sm:w-auto px-12 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-purple-600 to-teal-500 rounded-lg text-white font-semibold text-base sm:text-lg flex items-center justify-center gap-3 hover:scale-105 transition-transform whitespace-nowrap cursor-pointer"
+                  className="group relative w-full sm:w-auto px-8 sm:px-8 py-3.5 sm:py-4 bg-gradient-to-r from-purple-600 to-teal-500 rounded-lg text-white font-semibold text-base sm:text-lg flex items-center justify-center gap-3 hover:scale-105 transition-transform whitespace-nowrap cursor-pointer shadow-lg shadow-purple-500/20"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
@@ -176,14 +186,15 @@ const Home: NextPage = () => {
                   </span>
                 </motion.a>
                 
-                {/* <motion.button 
-                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 border-2 border-gray-300 dark:border-white/20 rounded-lg text-gray-900 dark:text-white font-semibold text-base sm:text-lg flex items-center justify-center gap-2 hover:border-teal-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-all whitespace-nowrap cursor-pointer"
+                <motion.a 
+                  href="/sell"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 border-2 border-purple-500/30 dark:border-purple-400/30 rounded-lg text-gray-900 dark:text-white font-semibold text-base sm:text-lg flex items-center justify-center gap-2 hover:border-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all whitespace-nowrap cursor-pointer"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  <i className="ri-play-circle-line text-lg sm:text-xl"></i>
-                  View Live Demo
-                </motion.button> */}
+                  <i className="ri-flashlight-line text-lg text-purple-600 dark:text-purple-400"></i>
+                  Sell Crypto for Cash
+                </motion.a>
               </div>
 
               {/* Trusted By */}
@@ -257,6 +268,148 @@ const Home: NextPage = () => {
                   </div>
                 </motion.div>
               </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* Solutions Section: For Businesses & For Individuals */}
+      <section id="solutions" className="py-16 sm:py-20 lg:py-24 relative overflow-hidden bg-gray-50/70 dark:bg-gray-900/40 border-y border-gray-200 dark:border-gray-800/80 transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-20">
+          <motion.div 
+            className="text-center max-w-3xl mx-auto mb-12 sm:mb-16"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <span className="text-teal-600 dark:text-teal-400 text-xs sm:text-sm font-semibold uppercase tracking-wider mb-2 inline-block">
+              TWO POWERFUL SOLUTIONS
+            </span>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900 dark:text-white leading-tight">
+              Built for Businesses &amp; Individuals
+            </h2>
+            <p className="mt-4 text-base sm:text-lg text-gray-600 dark:text-gray-400">
+              Whether you need automated crypto checkout for your business or want to sell your crypto for instant cash, FluxPay has you covered.
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 max-w-5xl mx-auto">
+            {/* For Businesses */}
+            <motion.div
+              whileHover={{ y: -6 }}
+              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-3xl p-8 sm:p-10 border border-gray-200 dark:border-gray-700 shadow-xl shadow-teal-500/5 dark:shadow-teal-500/5 flex flex-col justify-between relative overflow-hidden group"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <span className="text-xs font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    FOR BUSINESSES
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
+                    <i className="ri-building-line text-xl"></i>
+                  </div>
+                </div>
+
+                <h3 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">
+                  Accept crypto payments
+                </h3>
+
+                <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed mb-6">
+                  Accept any Solana token from customers globally. Automatically settled into your preferred asset via Jupiter liquidity.
+                </p>
+
+                <ul className="space-y-3 mb-8 text-sm text-gray-700 dark:text-gray-300">
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Accept 100+ Solana SPL tokens seamlessly</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Automatic swap to USDC or SOL via Jupiter</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Non-custodial, developer-ready API &amp; SDK</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Zero chargebacks and &lt;1 second finality</span>
+                  </li>
+                </ul>
+              </div>
+
+              <motion.a
+                href="/signup"
+                className="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold text-base flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform shadow-lg shadow-purple-500/20"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <span>Start Building</span>
+                <i className="ri-arrow-right-line text-lg group-hover:translate-x-1 transition-transform"></i>
+              </motion.a>
+            </motion.div>
+
+            {/* For Individuals */}
+            <motion.div
+              whileHover={{ y: -6 }}
+              transition={{ duration: 0.3 }}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition-delay={0.2}
+              className="bg-white dark:bg-gray-800 rounded-2xl sm:rounded-3xl p-8 sm:p-10 border border-gray-200 dark:border-gray-700 shadow-xl shadow-teal-500/5 dark:shadow-teal-500/5 flex flex-col justify-between relative overflow-hidden group"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <span className="text-xs font-bold uppercase tracking-wider px-3.5 py-1.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                    FOR INDIVIDUALS
+                  </span>
+                  <div className="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-teal-600 dark:text-teal-400">
+                    <i className="ri-flashlight-line text-xl"></i>
+                  </div>
+                </div>
+
+                <h3 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">
+                  Sell crypto for cash
+                </h3>
+
+                <p className="text-gray-600 dark:text-gray-400 text-base leading-relaxed mb-6">
+                  Turn SOL, BONK, USDC, or any Solana token into local fiat currency in minutes directly to your OPay or bank account.
+                </p>
+
+                <ul className="space-y-3 mb-8 text-sm text-gray-700 dark:text-gray-300">
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Direct payouts to OPay &amp; all Nigerian banks</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Best guaranteed rates with transparent fees</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Connect Phantom, Solflare or any Solana wallet</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <i className="ri-checkbox-circle-fill text-teal-500 text-lg"></i>
+                    <span>Payout delivered in under 2 minutes</span>
+                  </li>
+                </ul>
+              </div>
+
+              <motion.a
+                href="/sell"
+                className="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold text-base flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform shadow-lg shadow-purple-500/20"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <span>Sell Crypto</span>
+                <i className="ri-arrow-right-line text-lg group-hover:translate-x-1 transition-transform"></i>
+              </motion.a>
             </motion.div>
           </div>
         </div>

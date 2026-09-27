@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { getToken, clearAuth } from '@/utils/token'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://fluxpay-backend.onrender.com'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://fluxpay-solana-payment-gateway01.onrender.com'
 
 const apiClient = axios.create({
   baseURL: `${API_URL}/api`,
@@ -23,16 +23,10 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 )
 
-// Response interceptor — handle 401 and errors
+// Response interceptor — pass through errors to caller
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      clearAuth()
-      if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login'
-      }
-    }
     return Promise.reject(error)
   }
 )

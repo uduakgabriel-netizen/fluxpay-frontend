@@ -4,6 +4,8 @@ import DashboardLayout from '@/components/dashboard/layout'
 import { BarChart3, TrendingUp, DollarSign, Activity } from 'lucide-react'
 import { getPaymentStats, type PaymentStats } from '@/services/api/payments'
 import { useTheme } from '@/contexts/ThemeContext'
+import PageTransition from '@/components/shared/PageTransition'
+import Skeleton from '@/components/shared/Skeleton'
 
 const AreaChartComponent = dynamic(
   () =>
@@ -108,7 +110,7 @@ export default function AnalyticsPage() {
 
   return (
     <DashboardLayout pageTitle="Analytics">
-      <div className="space-y-6">
+      <PageTransition className="space-y-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Deep insights into your payment performance</p>
@@ -122,9 +124,9 @@ export default function AnalyticsPage() {
                 <card.icon size={18} className={card.color} />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{card.label}</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {loading ? <span className="animate-pulse">...</span> : card.value}
-              </p>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                {loading ? <Skeleton className="h-7 w-20 rounded" /> : card.value}
+              </div>
             </div>
           ))}
         </div>
@@ -135,9 +137,7 @@ export default function AnalyticsPage() {
             <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
             <div className="h-64">
               {loading ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-sm text-gray-400 animate-pulse">Loading...</p>
-                </div>
+                <Skeleton className="h-full w-full rounded-xl" />
               ) : revenueData.length === 0 || revenueData.every(d => d.amount === 0) ? (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
@@ -154,9 +154,7 @@ export default function AnalyticsPage() {
             <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Payment Volume</h3>
             <div className="h-64">
               {loading ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-sm text-gray-400 animate-pulse">Loading...</p>
-                </div>
+                <Skeleton className="h-full w-full rounded-xl" />
               ) : volumeData.length === 0 ? (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
@@ -206,7 +204,7 @@ export default function AnalyticsPage() {
             </div>
           )}
         </div>
-      </div>
+      </PageTransition>
     </DashboardLayout>
   )
 }
