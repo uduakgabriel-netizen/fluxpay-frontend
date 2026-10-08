@@ -16,80 +16,124 @@ export default function TransactionDetails() {
 
   const [copiedField, setCopiedField] = useState(null);
   const [detailTx, setDetailTx] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!id || typeof id !== 'string') return;
+    setLoading(true);
+
+    const existing = transactions.find((t) => t.id === id);
+    if (existing) {
+      setDetailTx({
+        id: existing.id,
+        token: existing.sourceToken || existing.token || 'SOL',
+        tokenAmount: existing.sourceAmount || existing.amount || '0',
+        fiatAmount: existing.netAmount || existing.fiatAmount || '0',
+        currency: existing.fiatCurrency || 'NGN',
+        method: existing.provider || 'Bank Transfer',
+        destination: existing.bankAccount ? `${existing.bankAccount.bankName} ${existing.bankAccount.accountNumber}` : (existing.accountNumber ? `${existing.bankName || 'Bank'} ${existing.accountNumber}` : 'Bank Account'),
+        recipient: existing.bankAccount ? existing.bankAccount.accountName : (existing.accountName || 'Verified Recipient'),
+        status: existing.status === 'COMPLETED' ? 'Completed' : existing.status === 'FAILED' ? 'Failed' : 'Processing',
+        txHash: existing.swapTxHash || '',
+        payoutRef: existing.payoutRefId || existing.id || '',
+        date: existing.createdAt ? new Date(existing.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
+        rate: existing.rate ? `1 ${existing.sourceToken || existing.token || 'SOL'} = ₦${existing.rate}` : '',
+        fee: existing.fee ? `₦${existing.fee}` : '',
+        networkFee: existing.networkFee ? `₦${existing.networkFee}` : '',
+      });
+      setLoading(false);
+      return;
+    }
+
     import('@/services/api/transactionsApi').then(({ transactionsApi }) => {
       transactionsApi.getById(id).then((t) => {
-        if (!t) return;
+        if (!t) {
+          setError('Transaction not found');
+          setLoading(false);
+          return;
+        }
         setDetailTx({
           id: t.id,
-          token: t.sourceToken,
-          tokenAmount: t.sourceAmount,
-          fiatAmount: t.netAmount || t.fiatAmount,
+          token: t.sourceToken || 'SOL',
+          tokenAmount: t.sourceAmount || '0',
+          fiatAmount: t.netAmount || t.fiatAmount || '0',
           currency: t.fiatCurrency || 'NGN',
           method: t.provider || 'Bank Transfer',
-          destination: t.bankAccount ? `${t.bankAccount.bankName} ${t.bankAccount.accountNumber}` : 'Local Account',
-          recipient: t.bankAccount ? t.bankAccount.accountName : 'Verified Account',
+          destination: t.bankAccount ? `${t.bankAccount.bankName} ${t.bankAccount.accountNumber}` : (t.accountNumber ? `${t.bankName || 'Bank'} ${t.accountNumber}` : 'Bank Account'),
+          recipient: t.bankAccount ? t.bankAccount.accountName : (t.accountName || 'Verified Recipient'),
           status: t.status === 'COMPLETED' ? 'Completed' : t.status === 'FAILED' ? 'Failed' : 'Processing',
           txHash: t.swapTxHash || '',
-          payoutRef: t.payoutRefId || '',
+          payoutRef: t.payoutRefId || t.id || '',
           date: t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
-          rate: `1 ${t.sourceToken} = ₦${t.rate}`,
-          fee: `₦${t.fee}`,
-          networkFee: `₦${t.networkFee || '12'}`,
+          rate: t.rate ? `1 ${t.sourceToken || 'SOL'} = ₦${t.rate}` : '',
+          fee: t.fee ? `₦${t.fee}` : '',
+          networkFee: t.networkFee ? `₦${t.networkFee}` : '',
         });
+        setLoading(false);
       }).catch((err) => {
         console.warn('Could not fetch detailTx from API:', err);
+        setError('Failed to load transaction details.');
+        setLoading(false);
       });
     });
-  }, [id]);
-
-  const tx = detailTx || transactions.find((t) => t.id === id) || {
-    id: id || 'FP-TX',
-    token: 'BONK',
-    tokenAmount: '10,000',
-    fiatAmount: '15,230',
-    currency: 'NGN',
-    method: 'OPay',
-    destination: 'OPay Account',
-    recipient: 'UDUAK GABRIEL AKPAN',
-    status: 'Completed',
-    txHash: '5K8a...9xLP',
-    payoutRef: 'BR-882390141',
-    date: 'Recent',
-    rate: '1 BONK = ₦1.523',
-    fee: '₦152',
-    networkFee: '₦12',
-  };
+  }, [id, transactions]);
 
   const handleCopy = (text, field) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     toast.success(`Copied to clipboard`);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  if (loading) {
+    return (
+      <ConsumerLayout title="Receipt Details" backHref="/sell/transactions" maxWidth="max-w-md">
+        <div className="rounded-3xl bg-white dark:bg-slate-850 p-8 border border-slate-200/90 dark:border-slate-800 flex flex-col items-center justify-center min-h-[300px]">
+          <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-sm font-semibold text-slate-500">Loading transaction details...</p>
+        </div>
+      </ConsumerLayout>
+    );
+  }
+
+  if (error || !detailTx) {
+    return (
+      <ConsumerLayout title="Receipt Details" backHref="/sell/transactions" maxWidth="max-w-md">
+        <div className="rounded-3xl bg-white dark:bg-slate-850 p-8 border border-slate-200/90 dark:border-slate-800 text-center space-y-4">
+          <i className="ri-error-warning-line text-4xl text-rose-500" />
+          <p className="text-base font-bold text-slate-800 dark:text-slate-100">{error || 'Transaction not found'}</p>
+          <Link href="/sell/transactions" className="inline-block px-5 py-2.5 rounded-xl bg-purple-600 text-white font-semibold text-sm">
+            Return to Transactions
+          </Link>
+        </div>
+      </ConsumerLayout>
+    );
+  }
+
+  const tx = detailTx;
+
   const rows = [
     { label: 'Source Asset :', value: tx.token },
     { label: 'Payout Destination :', value: tx.destination },
-    { label: 'Exchange Rate :', value: tx.rate || `1 ${tx.token} = ₦1.523` },
-    { label: 'FluxPay Fee :', value: tx.fee || '₦152' },
-    { label: 'Network Fee :', value: tx.networkFee || '₦12' },
+    ...(tx.rate ? [{ label: 'Exchange Rate :', value: tx.rate }] : []),
+    ...(tx.fee ? [{ label: 'FluxPay Fee :', value: tx.fee }] : []),
+    ...(tx.networkFee ? [{ label: 'Network Fee :', value: tx.networkFee }] : []),
     { label: 'Blockchain Network :', value: 'Solana' },
-    {
+    ...(tx.txHash ? [{
       label: 'Transaction Hash :',
       value: tx.txHash,
       canCopy: true,
       shortValue: `${tx.txHash.slice(0, 8)}...${tx.txHash.slice(-6)}`
-    },
-    {
+    }] : []),
+    ...(tx.payoutRef ? [{
       label: 'Payout Reference :',
       value: tx.payoutRef,
       canCopy: true
-    },
-    { label: 'Created Time :', value: tx.date || '24 Sep 2026' },
-    { label: 'Settlement Status :', value: tx.status || 'Completed' },
+    }] : []),
+    { label: 'Created Time :', value: tx.date || 'Recent' },
+    { label: 'Settlement Status :', value: tx.status || 'Processing' },
   ];
 
   return (

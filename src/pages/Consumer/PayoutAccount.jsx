@@ -1,20 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useConsumer } from '@/contexts/ConsumerContext';
 import ConsumerLayout from '@/components/Consumer/ConsumerLayout';
 import PageTransition from '@/components/shared/PageTransition';
-import { NIGERIAN_BANKS, resolveAccountName } from '@/utils/nigerianBanks';
 import { payoutApi } from '@/services/api/payoutApi';
 import { useToast } from '@/components/shared/Toast';
 
 export default function PayoutAccount() {
   const router = useRouter();
-  const { sellState, setPayoutDetails, bankAccounts, addBankAccount } = useConsumer();
+  const { setPayoutDetails, bankAccounts, addBankAccount } = useConsumer();
   const toast = useToast();
 
-  const [banksList, setBanksList] = useState(NIGERIAN_BANKS);
+  const [banksList, setBanksList] = useState([]);
   const [loadingBanks, setLoadingBanks] = useState(false);
 
   useEffect(() => {
@@ -31,10 +30,14 @@ export default function PayoutAccount() {
             name: b.name,
           }));
           setBanksList(mapped);
+          if (mapped.length > 0) {
+            setSelectedBank((prev) => prev || mapped[0].name);
+          }
         }
       })
       .catch((err) => {
-        console.warn('Failed to fetch bank list from API, using fallback:', err);
+        console.error('Failed to fetch bank list from API:', err);
+        toast.error('Failed to load bank list from server');
       })
       .finally(() => {
         if (mounted) setLoadingBanks(false);
@@ -42,7 +45,7 @@ export default function PayoutAccount() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [toast]);
 
   const displayAccounts = (bankAccounts && bankAccounts.length > 0)
     ? bankAccounts.map((a) => ({
@@ -51,27 +54,17 @@ export default function PayoutAccount() {
         label: a.bankName,
         number: a.accountNumber,
         holder: a.accountName,
-        gradient: a.bankName?.toLowerCase().includes('opay') ? 'from-[#00B875] to-[#059669]' : 'from-[#E05A10] to-[#C2410C]',
+        gradient: a.bankName?.toLowerCase().includes('opay') ? 'from-[#00B875] to-[#059669]' : 'from-[#8B5CF6] to-[#6D28D9]',
         icon: a.bankName?.toLowerCase().includes('opay') ? '🟢' : '🏦',
       }))
-    : [
-        {
-          id: 'opay',
-          type: 'OPay',
-          label: 'OPay Wallet',
-          number: '080XXXXXXXX',
-          holder: 'UDUAK GABRIEL AKPAN',
-          gradient: 'from-[#00B875] to-[#059669]',
-          icon: '🟢',
-        },
-      ];
+    : [];
 
-  const [selectedMethodId, setSelectedMethodId] = useState(displayAccounts[0]?.id || 'opay');
-  const [accountNumber, setAccountNumber] = useState(displayAccounts[0]?.number || '080XXXXXXXX');
-  const [holderName, setHolderName] = useState(displayAccounts[0]?.holder || 'UDUAK GABRIEL AKPAN');
-  const [selectedBank, setSelectedBank] = useState(displayAccounts[0]?.label || 'OPay');
+  const [selectedMethodId, setSelectedMethodId] = useState(displayAccounts[0]?.id || 'new');
+  const [accountNumber, setAccountNumber] = useState(displayAccounts[0]?.number || '');
+  const [holderName, setHolderName] = useState(displayAccounts[0]?.holder || '');
+  const [selectedBank, setSelectedBank] = useState(displayAccounts[0]?.label || '');
   const [isVerifying, setIsVerifying] = useState(false);
-  const [isVerified, setIsVerified] = useState(true);
+  const [isVerified, setIsVerified] = useState(displayAccounts.length > 0);
 
   const handleSelectAccount = (acc) => {
     setSelectedMethodId(acc.id);
@@ -84,59 +77,73 @@ export default function PayoutAccount() {
   const handleAccountNumChange = async (val) => {
     const clean = val.replace(/\D/g, '').slice(0, 10);
     setAccountNumber(clean);
+    setIsVerified(false);
+    setHolderName('');
+
     if (clean.length === 10) {
       setIsVerifying(true);
       try {
         const bankObj = banksList.find((b) => b.name === selectedBank) || banksList[0];
         const res = await payoutApi.verifyAccount({
           accountNumber: clean,
-          bankCode: bankObj?.code || '999992',
+          bankCode: bankObj?.code || '',
           currency: 'NGN',
         });
-        setHolderName(res.accountName || 'UDUAK GABRIEL AKPAN');
-        setIsVerified(true);
-        toast.success(`Account verified: ${res.accountName || 'UDUAK GABRIEL AKPAN'}`);
-      } catch {
-        const resolved = resolveAccountName(clean, selectedBank);
-        setHolderName(resolved || 'UDUAK GABRIEL AKPAN');
-        setIsVerified(true);
-        toast.info(`Account verified: ${resolved || 'UDUAK GABRIEL AKPAN'}`);
+        if (res?.accountName) {
+          setHolderName(res.accountName);
+          setIsVerified(true);
+          toast.success(`Account verified: ${res.accountName}`);
+        } else {
+          toast.error('Account name verification failed. Please check details.');
+        }
+      } catch (err) {
+        toast.error(err?.message || 'Verification failed. Please check account details.');
       } finally {
         setIsVerifying(false);
       }
-    } else {
-      setIsVerified(false);
     }
   };
 
   const handleVerify = async () => {
+    if (!accountNumber || accountNumber.length < 10) {
+      toast.warning('Account number must be 10 digits');
+      return;
+    }
     setIsVerifying(true);
     try {
       const bankObj = banksList.find((b) => b.name === selectedBank) || banksList[0];
       const res = await payoutApi.verifyAccount({
         accountNumber,
-        bankCode: bankObj?.code || '999992',
+        bankCode: bankObj?.code || '',
         currency: 'NGN',
       });
-      setHolderName(res.accountName || 'UDUAK GABRIEL AKPAN');
-      setIsVerified(true);
-      toast.success(`Account verified: ${res.accountName || 'UDUAK GABRIEL AKPAN'}`);
-    } catch {
-      setIsVerified(true);
-      toast.info('Account verified via NIBSS network');
+      if (res?.accountName) {
+        setHolderName(res.accountName);
+        setIsVerified(true);
+        toast.success(`Account verified: ${res.accountName}`);
+      } else {
+        toast.error('Could not verify account name.');
+      }
+    } catch (err) {
+      toast.error(err?.message || 'Account verification failed');
     } finally {
       setIsVerifying(false);
     }
   };
 
   const handleContinue = async () => {
+    if (!isVerified || !holderName) {
+      toast.warning('Please enter and verify a bank account before continuing');
+      return;
+    }
+
     let accountId = selectedMethodId;
-    if (selectedMethodId === 'new' || !accountId || accountId === 'opay' || accountId === 'gtbank') {
+    if (selectedMethodId === 'new' || !accountId) {
       try {
         const bankObj = banksList.find((b) => b.name === selectedBank) || banksList[0];
         const added = await addBankAccount?.({
           bankName: selectedBank,
-          bankCode: bankObj?.code || '999992',
+          bankCode: bankObj?.code || '',
           accountNumber,
           accountName: holderName,
           currency: 'NGN',
@@ -175,7 +182,7 @@ export default function PayoutAccount() {
               onClick={() => {
                 setSelectedMethodId('new');
                 setAccountNumber('');
-                setSelectedBank('Access Bank');
+                setHolderName('');
                 setIsVerified(false);
               }}
               className={`w-16 h-28 rounded-2xl flex flex-col items-center justify-center border-2 border-dashed transition-all flex-shrink-0 cursor-pointer ${
@@ -251,78 +258,73 @@ export default function PayoutAccount() {
               type="text"
               inputMode="numeric"
               maxLength={10}
+              placeholder="10-digit NUBAN"
               value={accountNumber}
               onChange={(e) => handleAccountNumChange(e.target.value)}
-              placeholder="080XXXXXXXX or 10-digit NUBAN"
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:border-purple-500 transition-colors font-mono"
+              className="w-full py-3.5 px-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold font-mono focus:outline-none focus:border-purple-500 transition-colors"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Destination Bank
+            </label>
+            <select
+              value={selectedBank}
+              onChange={(e) => {
+                setSelectedBank(e.target.value);
+                setIsVerified(false);
+                setHolderName('');
+              }}
+              disabled={loadingBanks}
+              className="w-full py-3.5 px-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-bold focus:outline-none focus:border-purple-500 transition-colors"
+            >
+              {banksList.map((b) => (
+                <option key={b.code} value={b.name}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
               Account Holder Name
             </label>
-            <input
-              type="text"
-              value={holderName}
-              onChange={(e) => setHolderName(e.target.value)}
-              placeholder="Full Account Name"
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-semibold text-slate-900 dark:text-white outline-none focus:border-purple-500 transition-colors"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                Provider / Bank
-              </label>
-              <select
-                value={selectedBank}
-                onChange={(e) => {
-                  setSelectedBank(e.target.value);
-                  setIsVerified(false);
-                }}
-                className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-purple-500 transition-colors cursor-pointer"
-              >
-                {banksList.map((b) => (
-                  <option key={b.id || b.code || b.name} value={b.name}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                Verification
-              </label>
-              <div className="h-[46px] px-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-between">
-                {isVerified ? (
-                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <i className="ri-checkbox-circle-fill text-base" /> Verified
-                  </span>
+            <div className="relative">
+              <input
+                type="text"
+                readOnly
+                placeholder="Verified via OneLiquidity"
+                value={holderName}
+                className="w-full py-3.5 px-4 pr-12 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-sm font-bold font-mono text-slate-900 dark:text-white cursor-not-allowed"
+              />
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                {isVerifying ? (
+                  <div className="w-4 h-4 rounded-full border-2 border-purple-600 border-t-transparent animate-spin" />
+                ) : isVerified ? (
+                  <span className="text-emerald-500 font-bold text-sm">✓</span>
                 ) : (
                   <button
                     type="button"
                     onClick={handleVerify}
-                    className="text-xs font-bold text-purple-600 dark:text-teal-400 hover:underline cursor-pointer"
+                    className="text-xs font-bold text-purple-600 hover:text-purple-700"
                   >
-                    {isVerifying ? 'Checking...' : 'Verify Now'}
+                    Verify
                   </button>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Big CTA Continue Button */}
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={handleContinue}
-            disabled={!isVerified && accountNumber.length < 10}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-teal-500 hover:from-purple-500 hover:to-teal-400 text-white font-bold text-base shadow-xl shadow-purple-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-50 mt-2 cursor-pointer"
+            disabled={!isVerified || !holderName}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-teal-500 hover:from-purple-500 hover:to-teal-400 text-white font-bold text-sm shadow-xl shadow-purple-500/25 flex items-center justify-center gap-2 transition-all mt-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span>CONTINUE</span>
+            <span>CONTINUE TO PREVIEW</span>
             <i className="ri-arrow-right-line" />
           </motion.button>
         </div>

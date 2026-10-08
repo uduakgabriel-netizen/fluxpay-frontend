@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, AlertCircle, Building2, Loader2 } from 'lucide-react';
-import { NIGERIAN_BANKS, resolveAccountName, DEFAULT_RESOLVED_NAME } from '@/utils/nigerianBanks';
+import { NIGERIAN_BANKS } from '@/utils/nigerianBanks';
 import { payoutApi } from '@/services/api/payoutApi';
 import { useToast } from '@/components/shared/Toast';
 
@@ -68,7 +68,7 @@ export default function AddBankAccountModal({
       setCurrency(editingAccount.currency || 'NGN');
       setProvider(editingAccount.bankName || editingAccount.provider || 'OPay');
       setAccountNumber(editingAccount.accountNumber || '');
-      setAccountName(editingAccount.accountName || DEFAULT_RESOLVED_NAME);
+      setAccountName(editingAccount.accountName || '');
       setIsVerified(true);
       setErrorMsg('');
     } else {
@@ -110,15 +110,17 @@ export default function AddBankAccountModal({
         bankCode: bankObj?.code || '999992',
         currency: currency || 'NGN',
       });
-      const resolved = res.accountName || DEFAULT_RESOLVED_NAME;
-      setAccountName(resolved);
+      if (!res.accountName) throw new Error('Account name could not be verified');
+      setAccountName(res.accountName);
       setIsVerified(true);
-      toast.success(`Account verified: ${resolved}`);
-    } catch {
-      const resolved = resolveAccountName(accountNumber, provider) || DEFAULT_RESOLVED_NAME;
-      setAccountName(resolved);
-      setIsVerified(true);
-      toast.success(`Account verified: ${resolved}`);
+      toast.success(`Account verified: ${res.accountName}`);
+    } catch (err) {
+      console.error('Account verification failed:', err);
+      const msg = err.response?.data?.message || err.message || 'Verification failed. Please check bank details.';
+      setErrorMsg(msg);
+      toast.error('Verification failed. Please check bank and account number.');
+      setIsVerified(false);
+      setAccountName('');
     } finally {
       setIsVerifying(false);
     }

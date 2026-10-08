@@ -9,7 +9,7 @@ import PageTransition from '@/components/shared/PageTransition';
 
 export default function Confirm() {
   const router = useRouter();
-  const { sellState, numericAmount, fee, networkFee, netFiat } = useConsumer();
+  const { sellState, numericAmount, fee, networkFee, netFiat, activeQuote } = useConsumer();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleConfirmAndSell = () => {
@@ -19,15 +19,23 @@ export default function Confirm() {
     }, 700);
   };
 
+  const tokenSymbol = sellState?.token?.symbol || 'SOL';
+  const fiatSymbol = sellState?.fiatSymbol || '₦';
+  const payoutDetails = sellState?.payoutDetails || {};
+
+  const exchangeRateStr = activeQuote?.rate
+    ? `1 ${tokenSymbol} ≈ ${fiatSymbol}${Number(activeQuote.rate).toLocaleString(undefined, { maximumFractionDigits: tokenSymbol === 'BONK' ? 8 : 4 })}`
+    : `1 ${tokenSymbol} ≈ ${fiatSymbol}0`;
+
   const previewRows = [
-    { label: 'Holder Name :', value: sellState.payoutDetails.accountName || 'UDUAK GABRIEL AKPAN' },
-    { label: 'Payout Account :', value: `${sellState.payoutDetails.provider} ${sellState.payoutDetails.accountNumber}` },
-    { label: 'Crypto Asset :', value: `${numericAmount.toLocaleString()} ${sellState.token.symbol}` },
-    { label: 'Exchange Rate :', value: `1 ${sellState.token.symbol} ≈ ₦${sellState.token.rateNgn.toLocaleString()}` },
-    { label: 'Exchange Date :', value: '24-Sep-2026' },
-    { label: 'Subtotal Amount :', value: `${sellState.fiatSymbol}${(netFiat + fee).toLocaleString()}` },
-    { label: 'FluxPay Fee :', value: `${sellState.fiatSymbol}${fee.toLocaleString()}` },
-    { label: 'Network Fees :', value: `${sellState.fiatSymbol}${networkFee}` },
+    { label: 'Holder Name :', value: payoutDetails.accountName || 'Verified Account' },
+    { label: 'Payout Account :', value: `${payoutDetails.provider || 'Bank'} ${payoutDetails.accountNumber || ''}` },
+    { label: 'Crypto Asset :', value: `${(numericAmount || 0).toLocaleString()} ${tokenSymbol}` },
+    { label: 'Exchange Rate :', value: exchangeRateStr },
+    { label: 'Exchange Date :', value: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) },
+    { label: 'Subtotal Amount :', value: `${fiatSymbol}${((netFiat || 0) + (fee || 0)).toLocaleString()}` },
+    { label: 'FluxPay Fee :', value: `${fiatSymbol}${(fee || 0).toLocaleString()}` },
+    { label: 'Network Fees :', value: `${fiatSymbol}${networkFee || 0}` },
   ];
 
   return (
@@ -38,13 +46,13 @@ export default function Confirm() {
           {/* Header Summary Pill */}
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-3">
-              <TokenIcon symbol={sellState.token.symbol} size="md" />
+              <TokenIcon symbol={tokenSymbol} size="md" />
               <div>
                 <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">
                   You are selling
                 </span>
                 <span className="text-xl font-black text-slate-900 dark:text-white font-mono">
-                  {numericAmount.toLocaleString()} {sellState.token.symbol}
+                  {(numericAmount || 0).toLocaleString()} {tokenSymbol}
                 </span>
               </div>
             </div>

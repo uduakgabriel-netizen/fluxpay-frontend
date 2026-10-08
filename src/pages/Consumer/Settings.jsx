@@ -8,7 +8,7 @@ import PageTransition from '@/components/shared/PageTransition';
 import { useToast } from '@/components/shared/Toast';
 
 export default function Settings() {
-  const { wallet } = useConsumer();
+  const { wallet, payoutAccounts } = useConsumer();
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState(null);
   const toast = useToast();
@@ -56,17 +56,21 @@ export default function Settings() {
         <div className="space-y-3 pt-3 text-xs">
           <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
             <span className="text-slate-500 dark:text-slate-400">Account Name</span>
-            <span className="font-bold text-slate-900 dark:text-white">UDUAK GABRIEL AKPAN</span>
+            <span className="font-bold text-slate-900 dark:text-white">
+              {payoutAccounts?.[0]?.accountName || (wallet?.connected ? 'Connected User' : 'Not Connected')}
+            </span>
           </div>
           <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
             <span className="text-slate-500 dark:text-slate-400">KYC Status</span>
             <span className="text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-100 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-              Tier 2 (₦5,000,000/day)
+              {wallet?.connected ? 'Tier 1 (Active)' : 'Unverified'}
             </span>
           </div>
           <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Email</span>
-            <span className="text-slate-700 dark:text-slate-300 font-mono">u.akpan@example.com</span>
+            <span className="text-slate-500 dark:text-slate-400">Wallet</span>
+            <span className="text-slate-700 dark:text-slate-300 font-mono">
+              {wallet?.address ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}` : 'None'}
+            </span>
           </div>
         </div>
       )
@@ -83,7 +87,7 @@ export default function Settings() {
               <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                 <span>👻</span> {wallet?.walletType || 'Phantom'} Wallet
               </div>
-              <div className="font-mono text-slate-400 mt-0.5">{wallet?.displayAddress || '7xK...9Pq'}</div>
+              <div className="font-mono text-slate-400 mt-0.5">{wallet?.displayAddress || 'Not Connected'}</div>
             </div>
             <Link
               href="/sell/wallets"
@@ -102,29 +106,36 @@ export default function Settings() {
       desc: 'Nigerian bank accounts & OPay wallets',
       render: (
         <div className="space-y-2 pt-3 text-xs">
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-emerald-500 text-base">🟢</span>
-              <div>
-                <span className="font-bold text-slate-900 dark:text-white block">OPay Wallet</span>
-                <span className="text-slate-400 font-mono">080XXXXXXXX</span>
-              </div>
+          {(!payoutAccounts || payoutAccounts.length === 0) ? (
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 text-center space-y-2">
+              <span className="text-slate-400 block">No saved payout accounts</span>
+              <Link
+                href="/sell/payout"
+                className="inline-block text-purple-600 dark:text-teal-400 hover:underline font-bold text-xs"
+              >
+                + Add Bank Account
+              </Link>
             </div>
-            <span className="text-[10px] text-purple-700 dark:text-teal-400 bg-purple-100 dark:bg-purple-950/50 px-2 py-0.5 rounded-full font-bold">
-              Default
-            </span>
-          </div>
-
-          <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-orange-500 text-base">🏦</span>
-              <div>
-                <span className="font-bold text-slate-900 dark:text-white block">GTBank</span>
-                <span className="text-slate-400 font-mono">0123456789</span>
+          ) : (
+            payoutAccounts.map((acc, idx) => (
+              <div key={acc.id || idx} className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-500 text-base">🏦</span>
+                  <div>
+                    <span className="font-bold text-slate-900 dark:text-white block">{acc.bankName}</span>
+                    <span className="text-slate-400 font-mono">{acc.accountNumber} · {acc.accountName}</span>
+                  </div>
+                </div>
+                {acc.isDefault ? (
+                  <span className="text-[10px] text-purple-700 dark:text-teal-400 bg-purple-100 dark:bg-purple-950/50 px-2 py-0.5 rounded-full font-bold">
+                    Default
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400">Saved</span>
+                )}
               </div>
-            </div>
-            <span className="text-[10px] text-slate-400">Secondary</span>
-          </div>
+            ))
+          )}
         </div>
       )
     },

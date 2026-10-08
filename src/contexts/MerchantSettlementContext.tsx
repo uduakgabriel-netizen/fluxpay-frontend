@@ -123,13 +123,13 @@ function mapBackendSettlement(s: SettlementDetail): SettlementRecord {
     fiatAmount: `${sym}${Number(s.grossAmount || s.fiatAmount || 0).toLocaleString()}`,
     fiatCurrency: s.currency || 'NGN',
     cryptoReceived: `${s.paymentCount || 1} payment(s)`,
-    rate: `1 SOL ≈ ${sym}${Number(s.fxRate || 300153).toLocaleString()}`,
-    provider: s.provider || 'Breet',
+    rate: s.fxRate ? `1 SOL ≈ ${sym}${Number(s.fxRate).toLocaleString()}` : '',
+    provider: s.provider || 'Bank Transfer',
     destinationAccount: `${bankName} · ${accNum}`,
     recipientName: accHolder,
     status: statusFormatted,
     fluxPayFee: `${sym}${Number(s.fee || 0).toLocaleString()}`,
-    networkFee: `${sym}12`,
+    networkFee: `${sym}${Number(s.networkFee || 0).toLocaleString()}`,
     netToBank: `${sym}${Number(s.netAmount || 0).toLocaleString()}`,
     reference: s.providerRefId || s.id,
     settledDate: settledDate,
@@ -242,18 +242,8 @@ export function MerchantSettlementProvider({ children }: { children: React.React
       }
       return mapped;
     } catch (err) {
-      console.warn('[MerchantSettlementContext] addAccount API failed, local fallback:', err);
-      const fallback: PayoutAccount = {
-        ...accountData,
-        id: `acc-${Date.now().toString(36)}`,
-        isVerified: true,
-        isDefault: accountData.isDefault || payoutAccounts.length === 0,
-      };
-      setPayoutAccounts((prev) => [fallback, ...prev]);
-      if (fallback.isDefault) {
-        setSelectedAccountId(fallback.id);
-      }
-      return fallback;
+      console.error('[MerchantSettlementContext] addAccount API failed:', err);
+      throw err;
     }
   };
 

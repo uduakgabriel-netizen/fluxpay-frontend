@@ -6,7 +6,6 @@ import { assetsApi } from '@/services/api/assetsApi';
 import { quoteApi } from '@/services/api/quoteApi';
 import { payoutApi } from '@/services/api/payoutApi';
 import { transactionsApi } from '@/services/api/transactionsApi';
-import { offrampApi } from '@/services/api/offrampApi';
 
 const bs58 = (bs58Pkg && bs58Pkg.default) || bs58Pkg;
 
@@ -16,8 +15,8 @@ export const TOKENS = [
     mint: 'So11111111111111111111111111111111111111112',
     name: 'Solana',
     decimals: 9,
-    balance: 2.45,
-    rateNgn: 300153,
+    balance: 0,
+    rateNgn: 0,
     iconBg: 'from-[#9945FF] to-[#14F195]',
     badge: 'Native',
   },
@@ -26,8 +25,8 @@ export const TOKENS = [
     mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     name: 'USD Coin',
     decimals: 6,
-    balance: 520.00,
-    rateNgn: 1615,
+    balance: 0,
+    rateNgn: 0,
     iconBg: 'from-[#2775CA] to-[#0A4B8A]',
     badge: 'Stable',
   },
@@ -36,8 +35,8 @@ export const TOKENS = [
     mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
     name: 'Tether USD',
     decimals: 6,
-    balance: 300.00,
-    rateNgn: 1615,
+    balance: 0,
+    rateNgn: 0,
     iconBg: 'from-[#26A17B] to-[#176249]',
     badge: 'Stable',
   },
@@ -46,8 +45,8 @@ export const TOKENS = [
     mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
     name: 'Bonk',
     decimals: 5,
-    balance: 100000,
-    rateNgn: 1.523,
+    balance: 0,
+    rateNgn: 0,
     iconBg: 'from-[#F18E38] to-[#D4501D]',
     badge: 'Meme',
   },
@@ -56,8 +55,8 @@ export const TOKENS = [
     mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
     name: 'Jupiter',
     decimals: 6,
-    balance: 125,
-    rateNgn: 1000,
+    balance: 0,
+    rateNgn: 0,
     iconBg: 'from-[#C98028] to-[#19E4A9]',
     badge: 'DEX',
   },
@@ -66,8 +65,8 @@ export const TOKENS = [
     mint: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3AkTrPvuqWeoPj',
     name: 'Pyth Network',
     decimals: 6,
-    balance: 450,
-    rateNgn: 420,
+    balance: 0,
+    rateNgn: 0,
     iconBg: 'from-[#7954D8] to-[#512DAB]',
     badge: 'Oracle',
   },
@@ -124,16 +123,23 @@ export function ConsumerProvider({ children }) {
     isSigning: false,
   });
 
+  // Cross-flow state
+  const [selectedToken, setSelectedTokenState] = useState(TOKENS[0]);
+  const [cryptoAmount, setCryptoAmountState] = useState('1');
+  const [selectedFiat, setSelectedFiat] = useState(FIATS[0]);
+  const [selectedAccount, setSelectedAccountState] = useState(null);
+  const [activeQuote, setActiveQuote] = useState(null);
+
   // Sell quote state (Consumer flow)
   const [sellState, setSellState] = useState({
-    token: TOKENS[3] || TOKENS[0], // BONK default
-    amount: '10000',
+    token: TOKENS[0],
+    amount: '1',
     fiatCurrency: 'NGN',
     fiatSymbol: '₦',
-    payoutMethod: 'OPay',
+    payoutMethod: 'Bank Account',
     payoutDetails: {
       id: '',
-      provider: 'OPay',
+      provider: '',
       accountNumber: '',
       accountName: '',
       verified: false,
@@ -143,21 +149,6 @@ export function ConsumerProvider({ children }) {
     activeQuoteId: null,
     activeQuote: null,
     currentTxId: null,
-  });
-
-  // Additional cross-flow state
-  const [selectedToken, setSelectedTokenState] = useState(TOKENS[3] || TOKENS[0]);
-  const [cryptoAmount, setCryptoAmountState] = useState('10000');
-  const [selectedFiat, setSelectedFiat] = useState(FIATS[0]);
-  const [selectedAccount, setSelectedAccountState] = useState(null);
-  const [activeQuote, setActiveQuote] = useState({
-    quoteId: '',
-    rate: 1.523,
-    expiresIn: 30,
-    fee: 152,
-    networkFee: 12,
-    netAmount: 15066,
-    fiatAmount: 15230,
   });
 
   // Helper to refresh transactions from backend
@@ -180,7 +171,7 @@ export function ConsumerProvider({ children }) {
           date: t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
           rate: `1 ${t.sourceToken} = ₦${t.rate}`,
           fee: `₦${t.fee}`,
-          networkFee: `₦${t.networkFee || '12'}`,
+          networkFee: `₦${t.networkFee || '0'}`,
         }));
         setTransactions(mapped);
       }
@@ -220,33 +211,33 @@ export function ConsumerProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    // 1. Fetch real sellable tokens
+    // 1. Fetch real sellable tokens from backend
     assetsApi
       .getSellableTokens()
       .then((res) => {
         if (!mounted || !res || !Array.isArray(res.tokens) || res.tokens.length === 0) return;
         const mapped = res.tokens.map((t) => {
-          const existing = TOKENS.find((x) => x.symbol === t.symbol) || {};
+          const existing = TOKENS.find((x) => x.symbol === t.symbol || x.mint === t.mint) || {};
           return {
             symbol: t.symbol,
             mint: t.mint,
             name: t.name,
             decimals: t.decimals,
-            balance: t.balance !== undefined ? t.balance : (existing.balance || 100),
-            rateNgn: t.rateNgn || existing.rateNgn || (t.symbol === 'BONK' ? 1.523 : t.symbol === 'SOL' ? 300153 : 1615),
+            balance: t.balance !== undefined ? t.balance : 0,
+            rateNgn: t.rateNgn || 0,
             iconBg: existing.iconBg || 'from-[#9945FF] to-[#14F195]',
             badge: existing.badge || 'Solana',
           };
         });
         setTokens(mapped);
-        const bonk = mapped.find((m) => m.symbol === 'BONK') || mapped[0];
-        if (bonk) {
-          setSelectedTokenState(bonk);
-          setSellState((prev) => ({ ...prev, token: bonk }));
+        const sol = mapped.find((m) => m.symbol === 'SOL') || mapped[0];
+        if (sol) {
+          setSelectedTokenState(sol);
+          setSellState((prev) => ({ ...prev, token: sol }));
         }
       })
       .catch((err) => {
-        console.warn('[ConsumerContext] Could not load tokens from API, using fallback:', err);
+        console.warn('[ConsumerContext] Could not load tokens from API:', err);
       });
 
     // 2. Validate existing token session
@@ -263,7 +254,7 @@ export function ConsumerProvider({ children }) {
             address: u.walletAddress,
             displayAddress: disp,
             walletType: 'Phantom',
-            balanceNgn: 1245320,
+            balanceNgn: 0,
             isConnecting: false,
             isSigning: false,
           });
@@ -323,7 +314,7 @@ export function ConsumerProvider({ children }) {
       }
 
       // Step 3: Verify signature with backend
-      const authRes = await authApi.verify(walletAddress, nonce, signatureBase58);
+      await authApi.verify(walletAddress, nonce, signatureBase58);
 
       const disp = `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
       setWallet({
@@ -331,7 +322,7 @@ export function ConsumerProvider({ children }) {
         address: walletAddress,
         displayAddress: disp,
         walletType,
-        balanceNgn: 1245320,
+        balanceNgn: 0,
         isConnecting: false,
         isSigning: false,
       });
@@ -392,7 +383,7 @@ export function ConsumerProvider({ children }) {
     setSellState((prev) => ({
       ...prev,
       token: found,
-      amount: found.symbol === 'BONK' ? '10000' : found.symbol === 'SOL' ? '1.50' : '100',
+      amount: '1',
     }));
   };
 
@@ -418,10 +409,10 @@ export function ConsumerProvider({ children }) {
 
   // Generate real quote from backend API
   const generateQuote = async (params) => {
-    const srcToken = params?.sourceToken || selectedToken?.symbol || sellState.token?.symbol || 'BONK';
+    const srcToken = params?.sourceToken || selectedToken?.symbol || sellState.token?.symbol || 'SOL';
     const foundToken = tokens.find((t) => t.symbol === srcToken) || selectedToken || sellState.token;
-    const srcMint = params?.sourceMint || foundToken?.mint || 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
-    const srcAmount = params?.sourceAmount || cryptoAmount || sellState.amount || '10000';
+    const srcMint = params?.sourceMint || foundToken?.mint || 'So11111111111111111111111111111111111111112';
+    const srcAmount = params?.sourceAmount || cryptoAmount || sellState.amount || '1';
     const fiatCurr = params?.fiatCurrency || selectedFiat?.code || sellState.fiatCurrency || 'NGN';
 
     try {
@@ -432,9 +423,9 @@ export function ConsumerProvider({ children }) {
         fiatCurrency: fiatCurr,
       });
 
-      const parsedRate = Number(q.rate) || 1.523;
+      const parsedRate = Number(q.rate) || 0;
       const parsedFee = Number(q.fee) || 0;
-      const parsedNetworkFee = Number(q.networkFee) || 12;
+      const parsedNetworkFee = Number(q.networkFee) || 0;
       const parsedNet = Number(q.netAmount) || 0;
       const parsedFiat = Number(q.fiatAmount) || 0;
 
@@ -442,6 +433,7 @@ export function ConsumerProvider({ children }) {
         quoteId: q.quoteId,
         rate: parsedRate,
         expiresIn: q.expiresInSeconds || 30,
+        expiresAt: q.expiresAt,
         fee: parsedFee,
         networkFee: parsedNetworkFee,
         netAmount: parsedNet,
@@ -456,64 +448,34 @@ export function ConsumerProvider({ children }) {
       }));
       return q;
     } catch (err) {
-      console.warn('[ConsumerContext] generateQuote API fallback:', err);
-      // Resilient calculation if offline
-      const rate = foundToken?.rateNgn || 1.523;
-      const gross = (parseFloat(srcAmount) || 0) * rate;
-      const feeVal = Math.round(gross * 0.01);
-      const fallbackQuote = {
-        quoteId: `mock_quote_${Date.now()}`,
-        rate,
-        expiresIn: 30,
-        fee: feeVal,
-        networkFee: 12,
-        netAmount: Math.max(0, gross - feeVal - 12),
-        fiatAmount: gross,
-      };
-      setActiveQuote(fallbackQuote);
-      return fallbackQuote;
+      console.error('[ConsumerContext] generateQuote API error:', err);
+      throw err;
     }
   };
 
   const addBankAccount = async (accData) => {
-    try {
-      const created = await payoutApi.addAccount({
-        bankName: accData.bankName || accData.provider || 'OPay',
-        bankCode: accData.bankCode || '999992',
-        accountNumber: accData.accountNumber,
-        accountName: accData.accountName || 'UDUAK GABRIEL AKPAN',
-        currency: accData.currency || 'NGN',
-        setDefault: true,
-      });
-      setBankAccounts((prev) => [created, ...prev]);
-      setSelectedAccountState(created);
-      setSellState((prev) => ({
-        ...prev,
-        payoutMethod: created.bankName,
-        payoutDetails: {
-          id: created.id,
-          provider: created.bankName,
-          accountNumber: created.accountNumber,
-          accountName: created.accountName,
-          verified: created.isVerified,
-        },
-      }));
-      return created;
-    } catch (err) {
-      console.warn('[ConsumerContext] addAccount API failed, local fallback:', err);
-      const local = {
-        id: `acc-${Date.now().toString(36)}`,
-        bankName: accData.bankName || 'OPay',
-        accountNumber: accData.accountNumber,
-        accountName: accData.accountName || 'UDUAK GABRIEL AKPAN',
-        currency: accData.currency || 'NGN',
-        isDefault: true,
-        isVerified: true,
-      };
-      setBankAccounts((prev) => [local, ...prev]);
-      setSelectedAccountState(local);
-      return local;
-    }
+    const created = await payoutApi.addAccount({
+      bankName: accData.bankName || accData.provider || 'Bank Account',
+      bankCode: accData.bankCode || '',
+      accountNumber: accData.accountNumber,
+      accountName: accData.accountName,
+      currency: accData.currency || 'NGN',
+      setDefault: true,
+    });
+    setBankAccounts((prev) => [created, ...prev]);
+    setSelectedAccountState(created);
+    setSellState((prev) => ({
+      ...prev,
+      payoutMethod: created.bankName,
+      payoutDetails: {
+        id: created.id,
+        provider: created.bankName,
+        accountNumber: created.accountNumber,
+        accountName: created.accountName,
+        verified: created.isVerified,
+      },
+    }));
+    return created;
   };
 
   // Synchronizers
@@ -534,21 +496,21 @@ export function ConsumerProvider({ children }) {
     if (acc) {
       setPayoutDetails({
         id: acc.id,
-        provider: acc.bankName || acc.provider || 'OPay',
+        provider: acc.bankName || acc.provider || 'Bank Account',
         accountNumber: acc.accountNumber || '',
-        accountName: acc.accountName || 'UDUAK GABRIEL AKPAN',
+        accountName: acc.accountName || '',
         verified: true,
       });
     }
   };
 
-  // Computations
+  // Computations strictly from real active quote
   const numericAmount = parseFloat(cryptoAmount || sellState.amount) || 0;
   const currentToken = selectedToken || sellState.token || tokens[0];
-  const grossFiat = Math.round(numericAmount * (activeQuote?.rate || currentToken?.rateNgn || 1.523));
-  const fee = activeQuote?.fee !== undefined ? activeQuote.fee : Math.max(12, Math.round(grossFiat * 0.01));
-  const networkFee = activeQuote?.networkFee !== undefined ? activeQuote.networkFee : 12;
-  const netFiat = activeQuote?.netAmount !== undefined ? activeQuote.netAmount : Math.max(0, grossFiat - fee - networkFee);
+  const grossFiat = activeQuote?.fiatAmount !== undefined ? activeQuote.fiatAmount : 0;
+  const fee = activeQuote?.fee !== undefined ? activeQuote.fee : 0;
+  const networkFee = activeQuote?.networkFee !== undefined ? activeQuote.networkFee : 0;
+  const netFiat = activeQuote?.netAmount !== undefined ? activeQuote.netAmount : 0;
   const fiatAmount = grossFiat.toString();
 
   return (
@@ -603,14 +565,14 @@ export function useConsumer() {
     return {
       tokens: TOKENS,
       fiats: FIATS,
-      selectedToken: TOKENS[3] || TOKENS[0],
+      selectedToken: TOKENS[0],
       setSelectedToken: () => {},
-      cryptoAmount: '10000',
+      cryptoAmount: '1',
       setCryptoAmount: () => {},
       selectedFiat: FIATS[0],
       setSelectedFiat: () => {},
-      fiatAmount: '15230',
-      activeQuote: { quoteId: '', rate: 1.523, expiresIn: 30, fee: 152, networkFee: 12, netAmount: 15066 },
+      fiatAmount: '0',
+      activeQuote: null,
       generateQuote: async () => {},
       bankAccounts: [],
       setBankAccounts: () => {},
@@ -618,24 +580,24 @@ export function useConsumer() {
       setSelectedAccount: () => {},
       addBankAccount: async () => {},
       sellState: {
-        token: TOKENS[3] || TOKENS[0],
-        amount: '10000',
+        token: TOKENS[0],
+        amount: '1',
         fiatCurrency: 'NGN',
         fiatSymbol: '₦',
-        payoutMethod: 'OPay',
+        payoutMethod: '',
         payoutDetails: {
           id: '',
-          provider: 'OPay',
+          provider: '',
           accountNumber: '',
           accountName: '',
           verified: false,
         },
       },
-      numericAmount: 10000,
-      grossFiat: 15230,
-      fee: 152,
-      networkFee: 12,
-      netFiat: 15066,
+      numericAmount: 0,
+      grossFiat: 0,
+      fee: 0,
+      networkFee: 0,
+      netFiat: 0,
       transactions: [],
       connectWallet: async () => {},
       signMessage: async () => {},

@@ -20,9 +20,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (router.query.swapSuccess) {
-      const amount = router.query.amount ? Number(router.query.amount).toLocaleString() : '445,728'
-      const provider = router.query.provider || 'OPay'
-      toast.success(`Swap complete. ₦${amount} sent to ${provider}.`)
+      const amount = router.query.amount ? Number(router.query.amount).toLocaleString() : ''
+      const provider = router.query.provider || 'Bank Account'
+      if (amount) {
+        toast.success(`Swap complete. ₦${amount} sent to ${provider}.`)
+      } else {
+        toast.success(`Swap complete. Funds sent to ${provider}.`)
+      }
       // Clear query params without full page reload
       router.replace('/dashboard', undefined, { shallow: true })
     }

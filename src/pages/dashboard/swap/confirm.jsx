@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ShieldCheck, ArrowRight, Wallet, Building2, CheckCircle2, FileSignature } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
-import { useConsumer, TOKENS, FIATS } from '@/contexts/ConsumerContext';
+import { useConsumer } from '@/contexts/ConsumerContext';
 
 export default function MerchantSwapConfirmPage() {
   const router = useRouter();
@@ -13,38 +13,24 @@ export default function MerchantSwapConfirmPage() {
     selectedToken,
     cryptoAmount,
     selectedFiat,
-    fiatAmount,
     selectedAccount,
-    bankAccounts,
+    activeQuote,
   } = useConsumer();
 
-  const tokenList = TOKENS || [];
-  const fiatList = FIATS || [];
-  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : [];
+  // If user arrives without quote or account, redirect back
+  useEffect(() => {
+    if (!activeQuote || !selectedAccount) {
+      router.replace('/dashboard/swap');
+    }
+  }, [activeQuote, selectedAccount, router]);
 
-  const token = selectedToken || tokenList[0] || {
-    symbol: 'SOL',
-    name: 'Solana',
-    rateNgn: 300153,
-  };
+  if (!activeQuote || !selectedAccount) {
+    return null;
+  }
 
-  const fiat = selectedFiat || fiatList[0] || {
-    code: 'NGN',
-    symbol: '₦',
-    name: 'Nigerian Naira'
-  };
-
-  const account = selectedAccount || accounts[0] || {
-    bankName: 'OPay',
-    accountNumber: '080XXXXXXXX',
-    accountName: 'UDUAK GABRIEL AKPAN',
-  };
-
-  const numCrypto = Number(cryptoAmount || 1.5);
-  const grossFiat = Math.round(numCrypto * (token.rateNgn || 300153));
-  const fluxFee = Math.round(grossFiat * 0.01); // 1%
-  const networkFee = 12; // ₦12 network fee
-  const netFiat = Math.max(0, grossFiat - fluxFee - networkFee);
+  const token = selectedToken || { symbol: 'SOL' };
+  const fiat = selectedFiat || { symbol: '₦', code: 'NGN' };
+  const account = selectedAccount;
 
   const handleConfirm = () => {
     router.push('/dashboard/swap/processing');
@@ -67,7 +53,7 @@ export default function MerchantSwapConfirmPage() {
               Confirm Swap & Payout
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Review conversion breakdown before signing authorization
+              Review live conversion breakdown before authorization
             </p>
           </div>
         </div>
@@ -80,7 +66,7 @@ export default function MerchantSwapConfirmPage() {
             <div>
               <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-semibold">You&apos;re selling</p>
               <p className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white mt-0.5">
-                {numCrypto} {token.symbol}
+                {cryptoAmount} {token.symbol}
               </p>
             </div>
             <div className="hidden sm:block text-gray-400">
@@ -89,7 +75,10 @@ export default function MerchantSwapConfirmPage() {
             <div className="sm:text-right">
               <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-semibold">Net Payout to Bank</p>
               <p className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-teal-400 mt-0.5">
-                {fiat.symbol}{netFiat.toLocaleString()}
+                {fiat.symbol}{Number(activeQuote.netAmount || activeQuote.fiatAmount).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </p>
             </div>
           </div>
@@ -103,14 +92,14 @@ export default function MerchantSwapConfirmPage() {
               <div className="text-right">
                 <div className="flex items-center justify-end gap-1.5 font-bold text-gray-900 dark:text-white text-sm">
                   <Building2 size={16} className="text-purple-500" />
-                  <span>{account?.bankName || 'OPay'}</span>
+                  <span>{account.bankName}</span>
                 </div>
                 <p className="font-mono text-gray-500 dark:text-slate-300 mt-0.5 font-bold">
-                  {account?.accountNumber || '080XXXXXXXX'}
+                  {account.accountNumber}
                 </p>
                 <div className="flex items-center justify-end gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
                   <CheckCircle2 size={13} />
-                  <span>{account?.accountName || 'UDUAK GABRIEL AKPAN'}</span>
+                  <span>{account.accountName}</span>
                 </div>
               </div>
             </div>
@@ -119,52 +108,61 @@ export default function MerchantSwapConfirmPage() {
             <div className="py-3 flex items-center justify-between">
               <span className="text-gray-500 dark:text-gray-400 font-medium">Exchange Rate:</span>
               <span className="font-mono font-semibold text-gray-900 dark:text-white">
-                1 {token.symbol} ≈ {fiat.symbol}{(token.rateNgn || 300153).toLocaleString()}
+                1 {token.symbol} ≈ {fiat.symbol}{Number(activeQuote.rate).toLocaleString(undefined, { maximumFractionDigits: token.symbol === 'BONK' ? 8 : 4 })} {fiat.code}
+              </span>
+            </div>
+
+            {/* Gross Amount */}
+            <div className="py-3 flex items-center justify-between">
+              <span className="text-gray-500 dark:text-gray-400 font-medium">Gross Amount:</span>
+              <span className="font-mono text-gray-700 dark:text-gray-300">
+                {fiat.symbol}{Number(activeQuote.fiatAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
 
             {/* FluxPay Fee */}
             <div className="py-3 flex items-center justify-between">
-              <span className="text-gray-500 dark:text-gray-400 font-medium">FluxPay Fee (1%):</span>
+              <span className="text-gray-500 dark:text-gray-400 font-medium">FluxPay Fee:</span>
               <span className="font-mono text-gray-700 dark:text-gray-300">
-                {fiat.symbol}{fluxFee.toLocaleString()}
+                {fiat.symbol}{activeQuote.fee}
               </span>
             </div>
 
             {/* Network Fee */}
             <div className="py-3 flex items-center justify-between">
-              <span className="text-gray-500 dark:text-gray-400 font-medium">Network Gas Fee:</span>
+              <span className="text-gray-500 dark:text-gray-400 font-medium">Network Fee:</span>
               <span className="font-mono text-gray-700 dark:text-gray-300">
-                {fiat.symbol}{networkFee.toLocaleString()}
+                {fiat.symbol}{activeQuote.networkFee}
               </span>
             </div>
 
-            {/* Total Payout */}
-            <div className="py-4 flex items-center justify-between text-sm font-bold">
-              <span className="text-gray-900 dark:text-white">Total Payout:</span>
-              <span className="text-base text-emerald-600 dark:text-teal-400 font-black">
-                {fiat.symbol}{netFiat.toLocaleString()}
+            {/* Net Payout */}
+            <div className="py-4 flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-950/20 px-3 rounded-xl mt-2">
+              <span className="text-emerald-700 dark:text-emerald-300 font-bold text-sm">Total Dispatched to Bank:</span>
+              <span className="font-mono font-black text-emerald-600 dark:text-teal-400 text-lg">
+                {fiat.symbol}{Number(activeQuote.netAmount || activeQuote.fiatAmount).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </span>
             </div>
 
           </div>
 
-          {/* Action Button */}
+          {/* Action CTA */}
           <motion.button
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             onClick={handleConfirm}
-            className="w-full mt-6 py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-6"
           >
-            <FileSignature size={18} />
-            <span>CONTINUE TO SIGN MESSAGE</span>
+            <span>CONFIRM & AUTHORIZE SWAP</span>
             <span>→</span>
           </motion.button>
 
-          {/* Bottom Security Note */}
           <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-4">
             <ShieldCheck size={14} className="text-emerald-500" />
-            <span>Cryptographic signature required on the next step. Zero slippage guarantee.</span>
+            <span>Non-custodial transfer. Funds land directly in your account.</span>
           </div>
 
         </div>

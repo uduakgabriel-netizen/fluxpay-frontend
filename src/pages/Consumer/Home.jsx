@@ -117,7 +117,7 @@ export default function Home() {
                   </span>
                   <div className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight mt-1 font-mono">
                     <NumberCounter
-                      value={wallet?.balanceNgn || 1245320}
+                      value={wallet?.balanceNgn || 0}
                       prefix="₦"
                       duration={1.2}
                       decimals={0}

@@ -3,11 +3,11 @@ import { motion } from 'framer-motion';
 import { CheckCircle2, ArrowRight, ExternalLink, Download, Building2 } from 'lucide-react';
 
 export default function SuccessCard({
-  fiatAmount = '₦15,230',
-  cryptoAmount = '10,000 BONK',
-  destination = 'OPay · 080XXXXXXXX',
-  recipientName = 'UDUAK GABRIEL AKPAN',
-  reference = 'BR-8X294B91',
+  fiatAmount = '',
+  cryptoAmount = '',
+  destination = '',
+  recipientName = '',
+  reference = '',
   txHash = null,
   onDone,
   onDownloadReceipt,

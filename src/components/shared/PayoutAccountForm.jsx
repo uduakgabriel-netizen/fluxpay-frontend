@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
-import { NIGERIAN_BANKS, resolveAccountName, DEFAULT_RESOLVED_NAME } from '@/utils/nigerianBanks';
+import { NIGERIAN_BANKS } from '@/utils/nigerianBanks';
 import { payoutApi } from '@/services/api/payoutApi';
 import Skeleton from './Skeleton';
 
@@ -69,13 +69,14 @@ export default function PayoutAccountForm({
         bankCode: bankObj?.code || '999992',
         currency: 'NGN',
       });
-      const name = res.accountName || DEFAULT_RESOLVED_NAME;
-      setAccountName(name);
+      if (!res.accountName) throw new Error('Account name could not be verified');
+      setAccountName(res.accountName);
       setIsVerified(true);
-    } catch {
-      const name = resolveAccountName(accountNumber, provider) || DEFAULT_RESOLVED_NAME;
-      setAccountName(name);
-      setIsVerified(true);
+    } catch (err) {
+      console.error('Bank verification failed:', err);
+      setErrorMsg(err.response?.data?.message || err.message || 'Verification failed. Please check account details.');
+      setIsVerified(false);
+      setAccountName('');
     } finally {
       setIsVerifying(false);
     }

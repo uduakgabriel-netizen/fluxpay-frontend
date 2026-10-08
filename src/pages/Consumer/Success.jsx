@@ -13,7 +13,9 @@ export default function Success() {
   const router = useRouter();
   const { sellState, netFiat } = useConsumer();
   const toast = useToast();
-  const txId = router.query.txId || sellState?.lastTxId || 'FP-8X294B91';
+  const txId = (router.query.txId && typeof router.query.txId === 'string')
+    ? router.query.txId
+    : (sellState?.lastTxId || '');
 
   const [copied, setCopied] = useState(false);
 
@@ -75,13 +77,13 @@ export default function Success() {
           >
             <div className="text-4xl sm:text-5xl font-black text-purple-600 dark:text-teal-400 tracking-tight font-mono">
               <NumberCounter
-                value={netFiat || 15230}
+                value={netFiat || 0}
                 prefix={sellState?.fiatSymbol || '₦'}
                 duration={1.2}
               />
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 font-medium">
-              Sent to {sellState?.payoutDetails?.provider || 'OPay'} {sellState?.payoutDetails?.accountNumber || '080XXXXXXXX'}
+              Sent to {sellState?.payoutDetails?.bankName || sellState?.payoutDetails?.provider || 'Bank Account'} {sellState?.payoutDetails?.accountNumber ? `· ${sellState.payoutDetails.accountNumber}` : ''}
             </p>
           </motion.div>
 

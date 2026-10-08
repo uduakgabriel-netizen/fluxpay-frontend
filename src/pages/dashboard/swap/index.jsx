@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowUpDown, ChevronDown, Check, Info, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, ChevronDown, Check, Sparkles, ShieldCheck, RefreshCw, AlertCircle } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
 import { useAuth } from '@/contexts/AuthContext';
-import { useConsumer, TOKENS, FIATS } from '@/contexts/ConsumerContext';
+import { useConsumer, FIATS } from '@/contexts/ConsumerContext';
+import { assetsApi } from '@/services/api/assetsApi';
+import { quoteApi } from '@/services/api/quoteApi';
 import Skeleton, { CardSkeleton } from '@/components/shared/Skeleton';
 import ErrorCard from '@/components/shared/ErrorCard';
 import PageTransition from '@/components/shared/PageTransition';
@@ -16,95 +18,166 @@ export default function MerchantSwapPage() {
   const { merchant } = useAuth();
   const toast = useToast();
   const {
-    selectedToken,
-    setSelectedToken,
-    cryptoAmount,
-    setCryptoAmount,
-    selectedFiat,
-    setSelectedFiat,
-    fiatAmount,
+    selectedToken: contextToken,
+    setSelectedToken: setContextToken,
+    cryptoAmount: contextAmount,
+    setCryptoAmount: setContextAmount,
+    selectedFiat: contextFiat,
+    setSelectedFiat: setContextFiat,
     activeQuote,
     generateQuote,
   } = useConsumer();
 
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 250);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const tokenList = TOKENS || [];
-  const fiatList = FIATS || [];
-
-  const token = selectedToken || tokenList[0] || {
-    symbol: 'SOL',
-    name: 'Solana',
-    balance: 2.45,
-    rateNgn: 300153,
-    iconBg: 'from-[#9945FF] to-[#14F195]',
-  };
-
-  const fiat = selectedFiat || fiatList[0] || {
-    code: 'NGN',
-    symbol: '₦',
-    name: 'Nigerian Naira'
-  };
-
+  const [tokens, setTokens] = useState([]);
+  const [selectedToken, setSelectedToken] = useState(null);
+  const [selectedFiat, setSelectedFiat] = useState(contextFiat || FIATS[0]);
+  const [inputVal, setInputVal] = useState(contextAmount || '1');
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showFiatModal, setShowFiatModal] = useState(false);
-  const [inputVal, setInputVal] = useState(cryptoAmount || '1.5');
-  const [errorMessage, setErrorMessage] = useState('');
 
-  // Update context when input changes
-  const handleAmountChange = (val) => {
-    // Only allow numbers and decimal point
-    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-      setInputVal(val);
-      if (setCryptoAmount) setCryptoAmount(val || '0');
-      if (Number(val) > (token.balance || 0)) {
-        setErrorMessage(`You don't have enough ${token.symbol}. Reduce the amount or add more.`);
-      } else {
-        setErrorMessage('');
+  // Real live quote state
+  const [quote, setQuote] = useState(null);
+  const [loadingQuote, setLoadingQuote] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
+  const [timeLeft, setTimeLeft] = useState(30);
+
+  const quoteRequestRef = useRef(0);
+
+  // 1. Fetch real sellable tokens from backend
+  useEffect(() => {
+    let mounted = true;
+    assetsApi
+      .getSellableTokens()
+      .then((res) => {
+        if (!mounted) return;
+        if (res?.tokens && res.tokens.length > 0) {
+          const mapped = res.tokens.map((t) => ({
+            symbol: t.symbol,
+            name: t.name,
+            mint: t.mint,
+            decimals: t.decimals,
+            balance: t.balance !== undefined ? t.balance : 0,
+            iconBg: t.symbol === 'SOL'
+              ? 'from-[#9945FF] to-[#14F195]'
+              : t.symbol === 'USDC'
+              ? 'from-[#2775CA] to-[#0A4B8A]'
+              : t.symbol === 'USDT'
+              ? 'from-[#26A17B] to-[#176249]'
+              : 'from-[#F18E38] to-[#D4501D]',
+          }));
+          setTokens(mapped);
+          const defaultTok = mapped.find((m) => m.symbol === 'USDT') || mapped.find((m) => m.symbol === 'SOL') || mapped[0];
+          setSelectedToken(defaultTok);
+          if (setContextToken) setContextToken(defaultTok);
+        }
+      })
+      .catch((err) => {
+        console.error('[MerchantSwap] Failed to load sellable tokens:', err);
+        setQuoteError('Failed to load token list from backend. Please refresh.');
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // 2. Fetch real quote from POST /api/offramp/quote
+  const fetchQuote = useCallback(async () => {
+    if (!selectedToken || !inputVal || Number(inputVal) <= 0) {
+      setQuote(null);
+      return;
+    }
+
+    const requestId = ++quoteRequestRef.current;
+    setLoadingQuote(true);
+    setQuoteError('');
+
+    try {
+      const q = await quoteApi.generateQuote({
+        sourceToken: selectedToken.symbol,
+        sourceMint: selectedToken.mint,
+        sourceAmount: inputVal,
+        fiatCurrency: selectedFiat.code,
+      });
+
+      if (requestId === quoteRequestRef.current) {
+        setQuote(q);
+        // Calculate remaining seconds from real expiresAt
+        if (q.expiresAt) {
+          const diff = Math.max(1, Math.floor((new Date(q.expiresAt).getTime() - Date.now()) / 1000));
+          setTimeLeft(Math.min(30, diff));
+        } else {
+          setTimeLeft(30);
+        }
+      }
+    } catch (err) {
+      if (requestId === quoteRequestRef.current) {
+        console.error('[MerchantSwap] Quote request error:', err);
+        setQuote(null);
+        setQuoteError(err?.message || 'Failed to fetch live quote from backend');
+      }
+    } finally {
+      if (requestId === quoteRequestRef.current) {
+        setLoadingQuote(false);
       }
     }
-  };
+  }, [selectedToken, inputVal, selectedFiat]);
 
-  const setMaxAmount = () => {
-    const maxVal = (token.balance || 2.45).toString();
-    setInputVal(maxVal);
-    if (setCryptoAmount) setCryptoAmount(maxVal);
-    setErrorMessage('');
-    toast.info(`Set amount to maximum balance: ${maxVal} ${token.symbol}`);
-  };
+  // Debounced quote fetch on input/token/fiat change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchQuote();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [fetchQuote]);
 
-  const setPercentAmount = (pct) => {
-    const bal = token.balance || 2.45;
-    const val = ((bal * pct) / 100).toFixed(token.symbol === 'BONK' ? 0 : 4);
-    setInputVal(val);
-    if (setCryptoAmount) setCryptoAmount(val);
-    setErrorMessage('');
+  // 3. Countdown timer & auto-refresh on expiry
+  useEffect(() => {
+    if (!quote || loadingQuote) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          // Quote expired: auto-refresh
+          fetchQuote();
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [quote, loadingQuote, fetchQuote]);
+
+  // Handle amount change
+  const handleAmountChange = (val) => {
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setInputVal(val);
+      if (setContextAmount) setContextAmount(val || '0');
+    }
   };
 
   const handleProceed = () => {
-    if (!inputVal || Number(inputVal) <= 0) {
-      setErrorMessage('Please enter a valid amount');
+    if (!quote) {
+      toast.error('Please wait for a live quote before proceeding');
       return;
     }
-    if (Number(inputVal) > (token.balance || 0)) {
-      setErrorMessage(`Insufficient balance. Max is ${token.balance} ${token.symbol}`);
-      return;
-    }
-    if (generateQuote) generateQuote();
+    if (setContextToken) setContextToken(selectedToken);
+    if (setContextAmount) setContextAmount(inputVal);
+    if (setContextFiat) setContextFiat(selectedFiat);
     router.push('/dashboard/swap/payout');
   };
 
-  const formattedFiat = Number(
-    fiatAmount || (Number(inputVal || 0) * (token.rateNgn || 300153))
-  ).toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
+  const currentToken = selectedToken || tokens[0] || { symbol: 'USDT', iconBg: 'from-[#26A17B] to-[#176249]' };
+  const currentFiat = selectedFiat || FIATS[0];
+
+  const formatRate = (rateVal) => {
+    const num = Number(rateVal);
+    if (isNaN(num) || num === 0) return '—';
+    if (num < 0.001) return num.toFixed(8);
+    if (num < 1) return num.toFixed(4);
+    return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  };
 
   return (
     <DashboardLayout pageTitle="Swap to Fiat">
@@ -123,16 +196,16 @@ export default function MerchantSwapPage() {
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
                 Swap to Fiat
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                  Instant Payout
+                  Live API
                 </span>
               </h1>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Convert your business crypto earnings to cash directly in your bank account
+                Convert crypto earnings to direct bank account payouts with real-time rates
               </p>
             </div>
           </div>
 
-          {/* Wallet Address Chip */}
+          {/* Wallet / Status Chip */}
           <div className="self-start sm:self-auto flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200/80 dark:border-purple-800/60 text-xs text-purple-700 dark:text-purple-300">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="font-mono">
@@ -143,168 +216,191 @@ export default function MerchantSwapPage() {
           </div>
         </div>
 
-        {loading ? (
-          <CardSkeleton rows={3} />
-        ) : (
-          /* Main Swap Card */
-          <div className="bg-white dark:bg-[#0f172a]/90 border border-gray-200 dark:border-purple-500/20 rounded-3xl p-6 sm:p-8 shadow-xl shadow-purple-500/5 backdrop-blur-xl relative overflow-hidden">
-            
-            {/* Ambient Card Glow */}
-            <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Main Swap Card */}
+        <div className="bg-white dark:bg-[#0f172a]/90 border border-gray-200 dark:border-purple-500/20 rounded-3xl p-6 sm:p-8 shadow-xl shadow-purple-500/5 backdrop-blur-xl relative overflow-hidden">
+          
+          {/* Ambient Card Glow */}
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
-            {/* You Send Section */}
-            <div className="space-y-2 mb-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  You send
+          {/* You Send Section */}
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                You send
+              </span>
+              <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span>Asset:</span>
+                <span className="font-semibold text-gray-900 dark:text-white">
+                  {currentToken.symbol}
                 </span>
-                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
-                  <span>Balance:</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {token.balance} {token.symbol}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={setMaxAmount}
-                    className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800/60 transition-colors cursor-pointer"
-                  >
-                    MAX
-                  </button>
-                </div>
               </div>
+            </div>
 
-              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 focus-within:border-purple-500 transition-colors flex items-center justify-between gap-4">
-                {/* Token Selector Trigger */}
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 focus-within:border-purple-500 transition-colors flex items-center justify-between gap-4">
+              {/* Token Selector Trigger */}
+              <button
+                type="button"
+                onClick={() => setShowTokenModal(true)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-white/10 hover:border-purple-400 dark:hover:border-purple-500 transition-all shrink-0 shadow-sm group cursor-pointer"
+              >
+                <div className={`w-7 h-7 rounded-full bg-gradient-to-tr ${currentToken.iconBg || 'from-purple-500 to-indigo-500'} flex items-center justify-center text-white text-xs font-bold shadow`}>
+                  {currentToken.symbol.slice(0, 1)}
+                </div>
+                <span className="font-bold text-sm text-gray-900 dark:text-white">
+                  {currentToken.symbol}
+                </span>
+                <ChevronDown size={14} className="text-gray-400 group-hover:text-purple-500 transition-colors" />
+              </button>
+
+              {/* Amount Input */}
+              <div className="flex-1 text-right">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={inputVal}
+                  onChange={(e) => handleAmountChange(e.target.value)}
+                  className="w-full bg-transparent text-right font-black text-2xl sm:text-3xl text-gray-900 dark:text-white focus:outline-none placeholder-gray-400"
+                />
+              </div>
+            </div>
+
+            {/* Quick Amount Chips */}
+            <div className="flex items-center gap-2 pt-1">
+              {['1', '5', '10', '50'].map((val) => (
                 <button
+                  key={val}
                   type="button"
-                  onClick={() => setShowTokenModal(true)}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-white/10 hover:border-purple-400 dark:hover:border-purple-500 transition-all shrink-0 shadow-sm group cursor-pointer"
+                  onClick={() => handleAmountChange(val)}
+                  className="flex-1 py-1 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-white/[0.04] text-gray-600 dark:text-gray-400 hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-300 transition-all border border-transparent hover:border-purple-300 dark:hover:border-purple-700 cursor-pointer"
                 >
-                  <div className={`w-7 h-7 rounded-full bg-gradient-to-tr ${token.iconBg} flex items-center justify-center text-white text-xs font-bold shadow`}>
-                    {token.symbol.slice(0, 1)}
-                  </div>
-                  <span className="font-bold text-sm text-gray-900 dark:text-white">
-                    {token.symbol}
-                  </span>
-                  <ChevronDown size={14} className="text-gray-400 group-hover:text-purple-500 transition-colors" />
+                  {val} {currentToken.symbol}
                 </button>
-
-                {/* Amount Input */}
-                <div className="flex-1 text-right">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={inputVal}
-                    onChange={(e) => handleAmountChange(e.target.value)}
-                    className="w-full bg-transparent text-right font-black text-2xl sm:text-3xl text-gray-900 dark:text-white focus:outline-none placeholder-gray-400"
-                  />
-                </div>
-              </div>
-
-              {/* Quick Percentage Chips */}
-              <div className="flex items-center gap-2 pt-1">
-                {[25, 50, 75, 100].map((pct) => (
-                  <button
-                    key={pct}
-                    type="button"
-                    onClick={() => setPercentAmount(pct)}
-                    className="flex-1 py-1 text-xs font-semibold rounded-lg bg-gray-100 dark:bg-white/[0.04] text-gray-600 dark:text-gray-400 hover:bg-purple-100 hover:text-purple-700 dark:hover:bg-purple-900/40 dark:hover:text-purple-300 transition-all border border-transparent hover:border-purple-300 dark:hover:border-purple-700 cursor-pointer"
-                  >
-                    {pct}%
-                  </button>
-                ))}
-              </div>
-
-              {Number(inputVal) > (token.balance || 0) && (
-                <div className="pt-2">
-                  <ErrorCard
-                    type="balance"
-                    message={`You don't have enough ${token.symbol}. Reduce the amount or set to MAX.`}
-                    actionLabel="Set MAX"
-                    onRetry={setMaxAmount}
-                  />
-                </div>
-              )}
+              ))}
             </div>
+          </div>
 
-            {/* Swap Divider Button */}
-            <div className="relative my-6 flex items-center justify-center">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200 dark:border-white/10" />
-              </div>
-              <div className="relative z-10 w-10 h-10 rounded-2xl bg-white dark:bg-[#1e1b4b] border border-gray-200 dark:border-purple-500/30 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-lg shadow-purple-500/10">
-                <ArrowUpDown size={18} />
-              </div>
+          {/* Swap Divider Button */}
+          <div className="relative my-6 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200 dark:border-white/10" />
             </div>
-
-            {/* You Receive Section */}
-            <div className="space-y-2 mb-6">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  You receive (estimated)
-                </span>
-                <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Direct bank payout
-                </span>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 flex items-center justify-between gap-4">
-                {/* Fiat Currency Selector Trigger */}
-                <button
-                  type="button"
-                  onClick={() => setShowFiatModal(true)}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-white/10 hover:border-teal-400 dark:hover:border-teal-500 transition-all shrink-0 shadow-sm group cursor-pointer"
-                >
-                  <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm shadow">
-                    {fiat.symbol}
-                  </span>
-                  <span className="font-bold text-sm text-gray-900 dark:text-white">
-                    {fiat.code}
-                  </span>
-                  <ChevronDown size={14} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
-                </button>
-
-                {/* Calculated Fiat Output */}
-                <div className="flex-1 text-right">
-                  <span className="font-black text-2xl sm:text-3xl text-emerald-600 dark:text-teal-400">
-                    {fiat.symbol}{formattedFiat}
-                  </span>
-                </div>
-              </div>
+            <div className="relative z-10 w-10 h-10 rounded-2xl bg-white dark:bg-[#1e1b4b] border border-gray-200 dark:border-purple-500/30 flex items-center justify-center text-purple-600 dark:text-purple-400 shadow-lg shadow-purple-500/10">
+              <ArrowUpDown size={18} />
             </div>
+          </div>
 
-            {/* Exchange Rate & Fee Info */}
-            <div className="p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-800/40 flex items-center justify-between text-xs text-gray-600 dark:text-gray-300 mb-6">
-              <div className="flex items-center gap-1.5">
-                <Sparkles size={14} className="text-purple-600 dark:text-purple-400" />
-                <span>Exchange Rate:</span>
-              </div>
-              <span className="font-mono font-semibold text-gray-900 dark:text-white">
-                1 {token.symbol} ≈ {fiat.symbol}{Number(token.rateNgn).toLocaleString()} {fiat.code}
+          {/* You Receive Section */}
+          <div className="space-y-2 mb-6">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                You receive (live quote)
+              </span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Direct bank payout
               </span>
             </div>
 
-            {/* Action CTA Button */}
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleProceed}
-              disabled={Number(inputVal) <= 0 || Number(inputVal) > (token.balance || 0)}
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span>PROCEED TO PAYOUT</span>
-              <span>→</span>
-            </motion.button>
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 flex items-center justify-between gap-4">
+              {/* Fiat Currency Selector Trigger */}
+              <button
+                type="button"
+                onClick={() => setShowFiatModal(true)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800/80 border border-gray-200 dark:border-white/10 hover:border-teal-400 dark:hover:border-teal-500 transition-all shrink-0 shadow-sm group cursor-pointer"
+              >
+                <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-sm shadow">
+                  {currentFiat.symbol}
+                </span>
+                <span className="font-bold text-sm text-gray-900 dark:text-white">
+                  {currentFiat.code}
+                </span>
+                <ChevronDown size={14} className="text-gray-400 group-hover:text-teal-500 transition-colors" />
+              </button>
 
-            {/* Non-custodial security badge */}
-            <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-4">
-              <ShieldCheck size={14} className="text-emerald-500" />
-              <span>Guaranteed quote. Zero slippage. Instant bank transfer.</span>
+              {/* Calculated Fiat Output */}
+              <div className="flex-1 text-right">
+                {loadingQuote ? (
+                  <div className="flex items-center justify-end gap-2 text-gray-400">
+                    <RefreshCw size={18} className="animate-spin text-purple-500" />
+                    <span className="text-sm font-semibold">Fetching live quote...</span>
+                  </div>
+                ) : quote ? (
+                  <span className="font-black text-2xl sm:text-3xl text-emerald-600 dark:text-teal-400">
+                    {currentFiat.symbol}{Number(quote.netAmount || quote.fiatAmount).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                ) : (
+                  <span className="font-black text-2xl sm:text-3xl text-gray-400">
+                    {currentFiat.symbol}0.00
+                  </span>
+                )}
+              </div>
             </div>
-
           </div>
-        )}
+
+          {/* Quote Error Card if API fails */}
+          {quoteError && (
+            <div className="mb-4">
+              <ErrorCard
+                type="network"
+                message={quoteError}
+                actionLabel="Retry Live Quote"
+                onRetry={fetchQuote}
+              />
+            </div>
+          )}
+
+          {/* Real Live Exchange Rate & 30s Expiry Countdown */}
+          {quote && (
+            <div className="p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-300 mb-6">
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={14} className="text-purple-600 dark:text-purple-400" />
+                <span>Exchange Rate:</span>
+                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                  1 {currentToken.symbol} ≈ {currentFiat.symbol}{formatRate(quote.rate)} {currentFiat.code}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Fee: {currentFiat.symbol}{quote.fee}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-[10px] font-bold font-mono">
+                  {timeLeft}s
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Action CTA Button */}
+          <motion.button
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleProceed}
+            disabled={!quote || loadingQuote || Number(inputVal) <= 0}
+            className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loadingQuote ? (
+              <>
+                <RefreshCw size={18} className="animate-spin" />
+                <span>Fetching Quote...</span>
+              </>
+            ) : (
+              <>
+                <span>PROCEED TO PAYOUT</span>
+                <span>→</span>
+              </>
+            )}
+          </motion.button>
+
+          {/* Non-custodial security badge */}
+          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-4">
+            <ShieldCheck size={14} className="text-emerald-500" />
+            <span>Real backend quote. Zero slippage. Instant bank transfer.</span>
+          </div>
+
+        </div>
 
       </PageTransition>
 
@@ -329,15 +425,15 @@ export default function MerchantSwapPage() {
               </div>
 
               <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                {tokenList.map((t) => {
-                  const isSelected = t.symbol === token.symbol;
+                {tokens.map((t) => {
+                  const isSelected = t.symbol === currentToken.symbol;
                   return (
                     <button
                       key={t.symbol}
                       onClick={() => {
-                        if (setSelectedToken) setSelectedToken(t);
+                        setSelectedToken(t);
+                        if (setContextToken) setContextToken(t);
                         setShowTokenModal(false);
-                        toast.info(`Selected ${t.symbol}`);
                       }}
                       className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
                         isSelected
@@ -346,7 +442,7 @@ export default function MerchantSwapPage() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${t.iconBg} flex items-center justify-center text-white text-xs font-bold shadow`}>
+                        <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${t.iconBg || 'from-purple-500 to-indigo-500'} flex items-center justify-center text-white text-xs font-bold shadow`}>
                           {t.symbol.slice(0, 1)}
                         </div>
                         <div>
@@ -355,7 +451,6 @@ export default function MerchantSwapPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-mono text-xs font-semibold text-gray-900 dark:text-white">{t.balance}</p>
                         {isSelected && <Check size={14} className="text-purple-600 dark:text-teal-400 ml-auto" />}
                       </div>
                     </button>
@@ -388,15 +483,15 @@ export default function MerchantSwapPage() {
               </div>
 
               <div className="space-y-1.5">
-                {fiatList.map((f) => {
-                  const isSelected = f.code === fiat.code;
+                {FIATS.map((f) => {
+                  const isSelected = f.code === currentFiat.code;
                   return (
                     <button
                       key={f.code}
                       onClick={() => {
-                        if (setSelectedFiat) setSelectedFiat(f);
+                        setSelectedFiat(f);
+                        if (setContextFiat) setContextFiat(f);
                         setShowFiatModal(false);
-                        toast.info(`Currency set to ${f.code} (${f.name})`);
                       }}
                       className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
                         isSelected

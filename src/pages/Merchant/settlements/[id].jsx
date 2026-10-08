@@ -68,13 +68,13 @@ export default function SettlementDetailPage() {
           fiatAmount: `${sym}${Number(s.grossAmount || s.fiatAmount || 0).toLocaleString()}`,
           fiatCurrency: s.currency || 'NGN',
           cryptoReceived: `${s.paymentCount || 1} payment(s)`,
-          rate: `1 SOL ≈ ${sym}${Number(s.fxRate || 300153).toLocaleString()}`,
-          provider: s.provider || 'Breet',
+          rate: s.fxRate ? `1 SOL ≈ ${sym}${Number(s.fxRate).toLocaleString()}` : '',
+          provider: s.provider || 'Bank Transfer',
           destinationAccount: `${bankName} · ${accNum}`,
           recipientName: accHolder,
           status: statusFormatted,
           fluxPayFee: `${sym}${Number(s.fee || 0).toLocaleString()}`,
-          networkFee: `${sym}12`,
+          networkFee: `${sym}${Number(s.networkFee || 0).toLocaleString()}`,
           netToBank: `${sym}${Number(s.netAmount || 0).toLocaleString()}`,
           reference: s.providerRefId || s.id,
           settledDate,
@@ -100,15 +100,15 @@ export default function SettlementDetailPage() {
     fiatAmount: '₦0',
     fiatCurrency: 'NGN',
     cryptoReceived: '0 payment(s)',
-    rate: '1 SOL ≈ ₦300,153',
-    provider: 'Breet',
+    rate: '',
+    provider: 'Bank Transfer',
     destinationAccount: 'Bank Account',
     recipientName: 'FluxPay Merchant',
     status: 'Pending',
     fluxPayFee: '₦0',
-    networkFee: '₦12',
+    networkFee: '₦0',
     netToBank: '₦0',
-    reference: typeof id === 'string' ? id : 'BR-REF',
+    reference: typeof id === 'string' ? id : '',
     settledDate: 'Recent',
     includedPayments: [],
   };
@@ -135,7 +135,7 @@ export default function SettlementDetailPage() {
     setDownloading(true);
     setTimeout(() => {
       setDownloading(false);
-      // Create a downloadable mock text receipt
+      // Create a downloadable text receipt
       const content = `FLUXPAY SETTLEMENT RECEIPT\n--------------------------\nSettlement ID: ${settlement.id}\nReference: ${settlement.reference}\nStatus: ${settlement.status}\nDate: ${settlement.settledDate}\n\nCrypto Received: ${settlement.cryptoReceived}\nExchange Rate: ${settlement.rate}\nGross Fiat: ${settlement.fiatAmount}\nFluxPay Fee: ${settlement.fluxPayFee}\nNetwork Fee: ${settlement.networkFee}\nNet Transferred: ${settlement.netToBank}\n\nDestination: ${settlement.destinationAccount}\nRecipient: ${settlement.recipientName}\nProvider: ${settlement.provider}\n--------------------------\nThank you for using FluxPay.`;
       const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
       const url = URL.createObjectURL(blob);

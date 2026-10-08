@@ -9,6 +9,7 @@ export interface SettlementDetail {
   fiatAmount: string;
   fxRate: string;
   fee: string;
+  networkFee?: string;
   netAmount: string;
   provider: string;
   providerRefId?: string;

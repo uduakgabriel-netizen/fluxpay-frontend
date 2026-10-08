@@ -91,7 +91,7 @@ export default function Wallets() {
               <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700 flex items-center justify-between">
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Liquid Value:</span>
                 <span className="text-xl font-black text-slate-900 dark:text-white font-mono">
-                  ₦{(wallet.balanceNgn || 1245320).toLocaleString()}
+                  ₦{(wallet.balanceNgn || 0).toLocaleString()}
                 </span>
               </div>
 

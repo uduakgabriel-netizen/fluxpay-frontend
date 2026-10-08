@@ -14,11 +14,11 @@ import {
   Check,
   ChevronDown,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
 import { useConsumer } from '@/contexts/ConsumerContext';
-import { NIGERIAN_BANKS, resolveAccountName } from '@/utils/nigerianBanks';
 import { payoutApi } from '@/services/api/payoutApi';
 import PageTransition from '@/components/shared/PageTransition';
 import EmptyState from '@/components/shared/EmptyState';
@@ -26,136 +26,163 @@ import { useToast } from '@/components/shared/Toast';
 
 export default function MerchantSwapPayoutPage() {
   const router = useRouter();
+  const toast = useToast();
   const {
     bankAccounts,
     selectedAccount,
     setSelectedAccount,
     addBankAccount,
+    refreshAccounts,
   } = useConsumer();
 
-  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : [];
+  const accounts = bankAccounts && Array.isArray(bankAccounts) ? bankAccounts : [];
 
-  const [activeTab, setActiveTab] = useState('saved'); // 'saved' or 'new'
-  const [banksList, setBanksList] = useState(NIGERIAN_BANKS);
-  const [selectedBank, setSelectedBank] = useState(NIGERIAN_BANKS[0]); // default OPay
+  const [activeTab, setActiveTab] = useState(accounts.length > 0 ? 'saved' : 'new');
+  const [banksList, setBanksList] = useState([]);
+  const [loadingBanks, setLoadingBanks] = useState(true);
+  const [selectedBank, setSelectedBank] = useState(null);
   const [bankSearch, setBankSearch] = useState('');
-  const [bankFilter, setBankFilter] = useState('ALL');
   const [showBankModal, setShowBankModal] = useState(false);
   const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('UDUAK GABRIEL AKPAN');
+  const [accountName, setAccountName] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
-  const [saveForFuture, setSaveForFuture] = useState(true);
+  const [verificationError, setVerificationError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
+  // 1. Fetch real bank list from OneLiquidity via GET /api/payout-accounts/banks
   useEffect(() => {
     let mounted = true;
+    setLoadingBanks(true);
     payoutApi
       .listBanks('NGN')
       .then((res) => {
         if (!mounted) return;
-        if (res && Array.isArray(res.banks) && res.banks.length > 0) {
-          const mapped = res.banks.map((b) => ({
-            id: b.code,
-            code: b.code,
-            name: b.name,
-            category: b.name.toLowerCase().includes('opay') || b.name.toLowerCase().includes('palm') || b.name.toLowerCase().includes('kuda') ? 'Fintech / Digital' : 'Commercial Bank',
-            popular: true,
-          }));
-          setBanksList(mapped);
-          if (mapped[0]) setSelectedBank(mapped[0]);
+        if (res?.banks && Array.isArray(res.banks) && res.banks.length > 0) {
+          setBanksList(res.banks);
+          setSelectedBank(res.banks[0]);
         }
       })
       .catch((err) => {
-        console.warn('[MerchantSwapPayoutPage] Failed to fetch bank list:', err);
+        console.error('[MerchantSwapPayout] Failed to fetch bank list:', err);
+        toast.error('Failed to load banks from server. Please retry.');
+      })
+      .finally(() => {
+        if (mounted) setLoadingBanks(false);
       });
+
     return () => {
       mounted = false;
     };
   }, []);
 
-  // Auto-select first account if none selected
-  const activeSavedAccount = selectedAccount || accounts[0] || {
-    id: 'opay',
-    bankName: 'OPay',
-    provider: 'OPay',
-    accountNumber: '080XXXXXXXX',
-    accountName: 'UDUAK GABRIEL AKPAN',
-    isDefault: true,
-    isVerified: true,
-  };
+  // Sync tab if accounts change
+  useEffect(() => {
+    if (accounts.length === 0) {
+      setActiveTab('new');
+    }
+  }, [accounts.length]);
 
-  const handleAccountNumChange = (val) => {
+  // Real account verification on 10 digits
+  const handleAccountNumChange = async (val) => {
     const clean = val.replace(/\D/g, '').slice(0, 10);
     setAccountNumber(clean);
-    if (clean.length === 10) {
+    setIsVerified(false);
+    setAccountName('');
+    setVerificationError('');
+
+    if (clean.length === 10 && selectedBank) {
       setIsVerifying(true);
-      setIsVerified(false);
-      setTimeout(() => {
+      try {
+        const res = await payoutApi.verifyAccount({
+          accountNumber: clean,
+          bankCode: selectedBank.code,
+          currency: 'NGN',
+        });
+        if (res?.accountName) {
+          setAccountName(res.accountName);
+          setIsVerified(true);
+          toast.success(`Account verified: ${res.accountName}`);
+        } else {
+          setVerificationError('Could not verify account name. Please verify bank and number.');
+        }
+      } catch (err) {
+        console.error('[MerchantSwapPayout] Verification error:', err);
+        setVerificationError(err?.message || 'Verification failed. Please check account details.');
+      } finally {
         setIsVerifying(false);
-        setIsVerified(true);
-        const resolved = resolveAccountName(clean, selectedBank.name);
-        setAccountName(resolved || 'UDUAK GABRIEL AKPAN');
-      }, 500);
-    } else {
-      setIsVerified(false);
-      setIsVerifying(false);
+      }
     }
   };
 
-  const handleSelectBank = (bank) => {
+  const handleBankSelect = (bank) => {
     setSelectedBank(bank);
     setShowBankModal(false);
+    setIsVerified(false);
+    setAccountName('');
+    setVerificationError('');
     if (accountNumber.length === 10) {
       setIsVerifying(true);
-      setTimeout(() => {
-        setIsVerifying(false);
-        setIsVerified(true);
-      }, 400);
+      payoutApi
+        .verifyAccount({
+          accountNumber,
+          bankCode: bank.code,
+          currency: 'NGN',
+        })
+        .then((res) => {
+          if (res?.accountName) {
+            setAccountName(res.accountName);
+            setIsVerified(true);
+            toast.success(`Account verified: ${res.accountName}`);
+          }
+        })
+        .catch((err) => {
+          setVerificationError(err?.message || 'Verification failed');
+        })
+        .finally(() => setIsVerifying(false));
     }
   };
 
-  const handleContinue = () => {
-    if (activeTab === 'saved') {
-      if (activeSavedAccount && setSelectedAccount) {
-        setSelectedAccount(activeSavedAccount);
-      }
-      router.push('/dashboard/swap/confirm');
-    } else {
-      // New account flow
-      if (!accountNumber || accountNumber.length < 10) return;
-      const newAcc = {
-        id: 'acc_' + Date.now(),
+  const handleContinueWithSaved = () => {
+    if (!selectedAccount && accounts.length > 0) {
+      setSelectedAccount(accounts[0]);
+    }
+    router.push('/dashboard/swap/confirm');
+  };
+
+  const handleContinueWithNew = async () => {
+    if (!isVerified || !accountName) {
+      toast.warning('Please enter a valid verified bank account');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const created = await addBankAccount({
         bankName: selectedBank.name,
+        bankCode: selectedBank.code,
         accountNumber,
-        accountName: accountName || 'UDUAK GABRIEL AKPAN',
-        isVerified: true,
-        provider: selectedBank.category.includes('Fintech') ? selectedBank.name : 'Bank',
-        code: selectedBank.code,
-      };
-
-      if (saveForFuture && addBankAccount) {
-        addBankAccount(newAcc);
-      }
-      if (setSelectedAccount) {
-        setSelectedAccount(newAcc);
-      }
+        accountName,
+        currency: 'NGN',
+      });
+      setSelectedAccount(created);
+      toast.success('Payout account saved');
       router.push('/dashboard/swap/confirm');
+    } catch (err) {
+      console.error('[MerchantSwapPayout] Failed to save account:', err);
+      toast.error(err?.message || 'Failed to save account');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  // Filter banks for modal
-  const filteredBanks = banksList.filter((b) => {
-    const matchesSearch = b.name.toLowerCase().includes(bankSearch.toLowerCase()) ||
-                          b.code.includes(bankSearch);
-    if (!matchesSearch) return false;
-    if (bankFilter === 'COMMERCIAL') return b.category === 'Commercial Bank';
-    if (bankFilter === 'FINTECH') return b.category.includes('Fintech');
-    if (bankFilter === 'POPULAR') return b.popular;
-    return true;
-  });
+  const filteredBanks = banksList.filter((b) =>
+    b.name.toLowerCase().includes(bankSearch.toLowerCase()) ||
+    b.code.includes(bankSearch)
+  );
 
   return (
-    <DashboardLayout pageTitle="Payout Account Details">
+    <DashboardLayout pageTitle="Select Payout Destination">
       <PageTransition className="max-w-2xl mx-auto space-y-6">
         
         {/* Navigation & Header */}
@@ -167,417 +194,263 @@ export default function MerchantSwapPayoutPage() {
             <ArrowLeft size={18} />
           </Link>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
-              Receive Account Details
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-2">
+              Payout Destination
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
+                Direct Bank Transfer
+              </span>
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Select or provide the Nigerian bank account to receive your cash payout
+              Select or add the bank account where your fiat will be deposited
             </p>
           </div>
         </div>
 
-        {/* Tab Toggle: Saved Accounts vs Add Bank Account */}
-        <div className="p-1 rounded-2xl bg-gray-100 dark:bg-slate-900/80 border border-gray-200 dark:border-white/10 flex items-center justify-between">
+        {/* Tab Switcher: Saved vs New */}
+        <div className="flex p-1 rounded-2xl bg-gray-100 dark:bg-slate-900/80 border border-gray-200 dark:border-white/10">
           <button
             type="button"
             onClick={() => setActiveTab('saved')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all relative flex items-center justify-center gap-2 ${
+            disabled={accounts.length === 0}
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               activeTab === 'saved'
-                ? 'text-white shadow-md shadow-purple-500/20'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-[#1e1b4b] text-purple-600 dark:text-purple-400 shadow-sm'
+                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white disabled:opacity-40 disabled:cursor-not-allowed'
             }`}
           >
-            {activeTab === 'saved' && (
-              <motion.div
-                layoutId="payout-tab-pill"
-                transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
-                className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 -z-0"
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-1.5">
-              <CreditCard size={14} />
-              Saved Accounts ({accounts.length})
-            </span>
+            Saved Accounts ({accounts.length})
           </button>
-
           <button
             type="button"
             onClick={() => setActiveTab('new')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all relative flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
               activeTab === 'new'
-                ? 'text-white shadow-md shadow-purple-500/20'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-[#1e1b4b] text-purple-600 dark:text-purple-400 shadow-sm'
+                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
-            {activeTab === 'new' && (
-              <motion.div
-                layoutId="payout-tab-pill"
-                transition={{ type: 'spring', bounce: 0.15, duration: 0.4 }}
-                className="absolute inset-0 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 -z-0"
-              />
-            )}
-            <span className="relative z-10 flex items-center gap-1.5">
-              <Plus size={14} />
-              Add Bank / Provide Details
-            </span>
+            + Add New Bank Account
           </button>
         </div>
 
-        {/* Card Container */}
-        <div className="bg-white dark:bg-[#0f172a]/95 border border-gray-200 dark:border-purple-500/20 rounded-3xl p-6 sm:p-8 shadow-xl shadow-purple-500/5 backdrop-blur-xl relative overflow-hidden">
-          
-          {/* Ambient card light */}
-          <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          {/* TAB 1: SAVED ACCOUNTS */}
-          {activeTab === 'saved' && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  Select Payout Destination
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('new')}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 transition-colors"
-                >
-                  <Plus size={14} />
-                  <span>Choose Another Bank</span>
-                </button>
-              </div>
-
-              {/* Saved Accounts List with Fixed Dark/Light Contrast */}
-              {accounts.length === 0 ? (
-                <EmptyState
-                  type="payout"
-                  title="No saved payout accounts"
-                  description="Add a Nigerian bank account to receive your crypto swap payout in Naira."
-                  actionLabel="Add Bank Account"
-                  onAction={() => setActiveTab('new')}
-                />
-              ) : (
-                <div className="space-y-3">
-                  {accounts.map((acc, index) => {
-                    const isSelected = activeSavedAccount?.id === acc.id;
-                    const isDefault = index === 0;
-
-                    return (
-                      <motion.div
-                        key={acc.id}
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.99 }}
-                        onClick={() => setSelectedAccount && setSelectedAccount(acc)}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-purple-50 dark:bg-purple-950/40 border-purple-500 dark:border-purple-500 ring-2 ring-purple-500/20'
-                            : 'bg-gray-50/90 dark:bg-slate-900/60 border-gray-200 dark:border-white/10 hover:border-purple-300 dark:hover:border-purple-500/40'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3.5">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 p-2 text-white flex items-center justify-center font-bold text-sm shadow">
-                            <Building2 size={18} />
-                          </div>
-
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-sm text-gray-900 dark:text-white">
-                                {acc.bankName}
-                              </span>
-                              {isDefault && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                                  Default
-                                </span>
-                              )}
-                            </div>
-                            <p className="font-mono text-xs text-gray-500 dark:text-slate-300 mt-0.5">
-                              {acc.accountNumber}
-                            </p>
-                            <p className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
-                              {acc.accountName}
-                            </p>
-                          </div>
+        {/* Tab 1: Saved Accounts */}
+        {activeTab === 'saved' && (
+          <div className="space-y-4">
+            {accounts.length === 0 ? (
+              <EmptyState
+                type="accounts"
+                title="No saved payout accounts"
+                description="Add your first verified bank account to receive payouts."
+                actionLabel="Add Bank Account"
+                onAction={() => setActiveTab('new')}
+              />
+            ) : (
+              <div className="space-y-3">
+                {accounts.map((acc) => {
+                  const isSelected = selectedAccount?.id === acc.id || (!selectedAccount && acc.isDefault);
+                  return (
+                    <motion.div
+                      key={acc.id}
+                      whileHover={{ scale: 1.01 }}
+                      onClick={() => setSelectedAccount(acc)}
+                      className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                        isSelected
+                          ? 'bg-purple-50/70 dark:bg-purple-950/30 border-purple-500 shadow-md shadow-purple-500/10'
+                          : 'bg-white dark:bg-slate-900/60 border-gray-200 dark:border-white/10 hover:border-purple-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold">
+                          <Building2 size={20} />
                         </div>
-
-                        <div className="text-right">
-                          {isSelected ? (
-                            <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center shadow">
-                              <CheckCircle2 size={16} />
-                            </div>
-                          ) : (
-                            <div className="w-6 h-6 rounded-full border border-gray-300 dark:border-white/20" />
-                          )}
+                        <div>
+                          <p className="font-bold text-sm text-gray-900 dark:text-white">{acc.bankName}</p>
+                          <p className="text-xs font-mono text-gray-500 dark:text-gray-400">{acc.accountNumber} · {acc.accountName}</p>
                         </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* TAB 2: PROVIDE NEW ACCOUNT DETAILS WITH FULL NIGERIAN BANK LIST */}
-          {activeTab === 'new' && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-4"
-            >
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-1">
-                  Nigerian Bank & Account Details
-                </span>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Choose from any Nigerian commercial bank or digital fintech provider
-                </p>
-              </div>
-
-              {/* Bank Selector Trigger */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Select Bank / Financial Institution
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowBankModal(true)}
-                  className="w-full p-3.5 rounded-2xl bg-gray-50 dark:bg-slate-900/80 border border-gray-200 dark:border-white/10 hover:border-purple-500 dark:hover:border-purple-500 transition-all flex items-center justify-between group shadow-sm text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${selectedBank.color} text-white flex items-center justify-center font-bold text-xs shadow`}>
-                      {selectedBank.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-1.5">
-                        {selectedBank.name}
-                        {selectedBank.popular && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
-                            Popular
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {acc.isDefault && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
+                            Default
                           </span>
                         )}
-                      </p>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                        {selectedBank.category} · Bank Code: {selectedBank.code}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 text-xs font-semibold">
-                    <span>Change</span>
-                    <ChevronDown size={16} className="text-gray-400 group-hover:text-purple-500 transition-colors" />
-                  </div>
-                </button>
-              </div>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          isSelected ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-300'
+                        }`}>
+                          {isSelected && <Check size={12} strokeWidth={3} />}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
 
-              {/* 10-Digit Account Number */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                    Account Number (NUBAN)
-                  </label>
-                  <span className="text-[11px] font-mono text-gray-400">
-                    {accountNumber.length}/10 digits
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleContinueWithSaved}
+                  className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                >
+                  <span>CONTINUE TO CONFIRMATION</span>
+                  <span>→</span>
+                </motion.button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Add New Account with Real Verification */}
+        {activeTab === 'new' && (
+          <div className="bg-white dark:bg-[#0f172a]/90 border border-gray-200 dark:border-purple-500/20 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+            <h3 className="font-bold text-base text-gray-900 dark:text-white">Bank Account Details</h3>
+
+            {/* Bank Selector Trigger */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                Select Bank / Institution
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowBankModal(true)}
+                disabled={loadingBanks}
+                className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 flex items-center justify-between hover:border-purple-400 transition-all text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <Building2 size={20} className="text-purple-600 dark:text-purple-400" />
+                  <span className="font-bold text-sm text-gray-900 dark:text-white">
+                    {loadingBanks ? 'Loading real bank directory...' : selectedBank?.name || 'Select Bank'}
                   </span>
                 </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={10}
-                    placeholder="Enter 10-digit account number (e.g. 0123456789)"
-                    value={accountNumber}
-                    onChange={(e) => handleAccountNumChange(e.target.value)}
-                    className="w-full py-3.5 px-4 pr-12 rounded-2xl bg-gray-50 dark:bg-slate-900/80 border border-gray-200 dark:border-white/10 text-sm font-mono font-bold text-gray-900 dark:text-white focus:outline-none focus:border-purple-500 transition-all placeholder-gray-400"
-                  />
-                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
-                    {isVerifying ? (
-                      <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                    ) : isVerified ? (
-                      <CheckCircle2 size={20} className="text-emerald-500" />
-                    ) : null}
-                  </div>
+                <ChevronDown size={16} className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* Account Number Input */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                10-Digit Account Number
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
+                  placeholder="0123456789"
+                  value={accountNumber}
+                  onChange={(e) => handleAccountNumChange(e.target.value)}
+                  className="w-full p-4 pr-12 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 text-gray-900 dark:text-white font-mono font-bold text-lg focus:outline-none focus:border-purple-500 transition-colors"
+                />
+                <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                  {isVerifying ? (
+                    <Loader2 size={20} className="animate-spin text-purple-600" />
+                  ) : isVerified ? (
+                    <CheckCircle2 size={22} className="text-emerald-500" />
+                  ) : null}
                 </div>
               </div>
+            </div>
 
-              {/* Resolved Account Name Banner */}
-              <AnimatePresence>
-                {accountNumber.length === 10 && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 space-y-1">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
-                        <CheckCircle2 size={15} />
-                        <span>Account Name Verified</span>
-                      </div>
-                      <p className="font-bold text-sm text-gray-900 dark:text-white">
-                        {accountName}
-                      </p>
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                        Resolved via Central Bank of Nigeria / NIBSS Instant Payment Network
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+            {/* Real Verification Feedback */}
+            {isVerified && accountName && (
+              <motion.div
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-center gap-3"
+              >
+                <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div>
+                  <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                    Account Verified via OneLiquidity
+                  </p>
+                  <p className="text-sm font-black text-gray-900 dark:text-white font-mono mt-0.5">
+                    {accountName}
+                  </p>
+                </div>
+              </motion.div>
+            )}
 
-              {/* Save for future checkbox */}
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="saveAccount"
-                  checked={saveForFuture}
-                  onChange={(e) => setSaveForFuture(e.target.checked)}
-                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 w-4 h-4 cursor-pointer"
-                />
-                <label htmlFor="saveAccount" className="text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                  Save this account to saved beneficiaries for one-click swaps
-                </label>
+            {verificationError && (
+              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{verificationError}</span>
               </div>
+            )}
 
-            </motion.div>
-          )}
-
-          {/* Continue Button */}
-          <motion.button
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleContinue}
-            disabled={activeTab === 'new' && accountNumber.length < 10}
-            className="w-full mt-6 py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span>CONTINUE TO CONFIRMATION</span>
-            <span>→</span>
-          </motion.button>
-
-          {/* Bottom Security Note */}
-          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-4">
-            <ShieldCheck size={14} className="text-emerald-500" />
-            <span>Bank account verified. Instant settlement via NIP / wire network.</span>
+            {/* Continue CTA */}
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleContinueWithNew}
+              disabled={!isVerified || isSaving}
+              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span>Saving Account...</span>
+                </>
+              ) : (
+                <>
+                  <span>SAVE & CONTINUE</span>
+                  <span>→</span>
+                </>
+              )}
+            </motion.button>
           </div>
-
-        </div>
+        )}
 
       </PageTransition>
 
-      {/* FULL NIGERIAN BANK SELECTION MODAL */}
+      {/* Bank Selection Modal */}
       <AnimatePresence>
         {showBankModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-purple-500/20 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[85vh] flex flex-col"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4"
             >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-white/10 shrink-0">
-                <div>
-                  <h3 className="font-bold text-lg text-gray-900 dark:text-white">
-                    Select Nigerian Bank
-                  </h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Supports all Nigerian Commercial, Digital, and Fintech Banks
-                  </p>
-                </div>
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-slate-800">
+                <h3 className="font-bold text-base text-gray-900 dark:text-white">Select Bank ({banksList.length})</h3>
                 <button
-                  type="button"
                   onClick={() => setShowBankModal(false)}
-                  className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white flex items-center justify-center text-sm"
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-white text-sm"
                 >
                   ✕
                 </button>
               </div>
 
-              {/* Search Bar */}
-              <div className="relative shrink-0">
+              {/* Search Bank */}
+              <div className="relative">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by bank name or code (e.g. Zenith, Access, Kuda, 058)..."
+                  placeholder="Search bank name or code..."
                   value={bankSearch}
                   onChange={(e) => setBankSearch(e.target.value)}
-                  className="w-full py-2.5 pl-10 pr-4 rounded-xl bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-white/10 text-xs font-semibold text-gray-900 dark:text-white focus:outline-none focus:border-purple-500"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-purple-500"
                 />
               </div>
 
-              {/* Category Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 scrollbar-none text-[11px]">
-                {[
-                  { label: 'All Banks', key: 'ALL' },
-                  { label: 'Popular', key: 'POPULAR' },
-                  { label: 'Commercial', key: 'COMMERCIAL' },
-                  { label: 'Fintech / Digital', key: 'FINTECH' },
-                ].map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    onClick={() => setBankFilter(f.key)}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all shrink-0 ${
-                      bankFilter === f.key
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'bg-gray-100 dark:bg-white/[0.04] text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-white/10'
-                    }`}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Bank List Scrollable */}
-              <div className="overflow-y-auto space-y-1.5 flex-1 pr-1">
+              {/* Bank List */}
+              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
                 {filteredBanks.map((b) => {
-                  const isSelected = selectedBank.id === b.id;
+                  const isSelected = selectedBank?.code === b.code;
                   return (
                     <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => handleSelectBank(b)}
-                      className={`w-full p-3 rounded-xl transition-all flex items-center justify-between text-left ${
+                      key={b.code}
+                      onClick={() => handleBankSelect(b)}
+                      className={`w-full flex items-center justify-between p-3 rounded-xl transition-all text-left ${
                         isSelected
-                          ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-500/80 text-purple-900 dark:text-purple-200'
-                          : 'hover:bg-gray-50 dark:hover:bg-white/[0.04] text-gray-900 dark:text-white border border-transparent'
+                          ? 'bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800'
+                          : 'hover:bg-gray-50 dark:hover:bg-white/[0.04]'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg bg-gradient-to-tr ${b.color} text-white flex items-center justify-center font-bold text-xs shadow-sm`}>
-                          {b.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white flex items-center gap-1.5">
-                            {b.name}
-                            {b.popular && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300">
-                                Popular
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                            {b.category} · Code: {b.code}
-                          </p>
-                        </div>
-                      </div>
-
-                      {isSelected && (
-                        <div className="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center">
-                          <Check size={12} />
-                        </div>
-                      )}
+                      <span className="font-semibold text-sm text-gray-900 dark:text-white">{b.name}</span>
+                      <span className="text-xs font-mono text-gray-400">{b.code}</span>
                     </button>
                   );
                 })}
-
-                {filteredBanks.length === 0 && (
-                  <div className="py-8 text-center text-xs text-gray-400">
-                    No banks matching &ldquo;{bankSearch}&rdquo;
-                  </div>
-                )}
               </div>
             </motion.div>
           </div>
