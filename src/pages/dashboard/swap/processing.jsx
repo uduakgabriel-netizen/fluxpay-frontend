@@ -5,15 +5,14 @@ import {
   CheckCircle2,
   Loader2,
   Circle,
-  ShieldCheck,
   Building2,
   AlertCircle,
-  FileSignature,
+  RefreshCw,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
 import ErrorCard from '@/components/shared/ErrorCard';
-import { useConsumer } from '@/contexts/ConsumerContext';
+import { useMerchantSwap } from '@/contexts/MerchantSwapContext';
 import { offrampApi } from '@/services/api/offrampApi';
 import { useToast } from '@/components/shared/Toast';
 
@@ -21,30 +20,47 @@ export default function MerchantSwapProcessingPage() {
   const router = useRouter();
   const toast = useToast();
   const {
-    selectedToken,
-    cryptoAmount,
-    selectedFiat,
+    sourceToken,
+    sourceAmount,
+    fiatCurrency,
     selectedAccount,
     activeQuote,
-    signMessage,
-  } = useConsumer();
+    transactionId: contextTxId,
+    setTransactionId,
+    isHydrated,
+  } = useMerchantSwap();
 
   const [currentStep, setCurrentStep] = useState(0);
-  const [txId, setTxId] = useState('');
+  const [currentStatus, setCurrentStatus] = useState('PENDING');
+  const [statusLabel, setStatusLabel] = useState('Initializing swap...');
   const [error, setError] = useState('');
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
+  const [isPolling, setIsPolling] = useState(true);
+
+  // Read transactionId from query params or context
+  const txId = (
+    router.query.transactionId ||
+    router.query.txId ||
+    contextTxId ||
+    ''
+  ).toString().trim();
+
+  // Keep context in sync if transactionId was in URL
+  useEffect(() => {
+    if (txId && txId !== contextTxId) {
+      setTransactionId(txId);
+    }
+  }, [txId, contextTxId, setTransactionId]);
 
   const steps = [
     { label: 'Quote confirmed', desc: 'Guaranteed exchange rate locked' },
-    { label: 'Transaction created', desc: 'Solana instructions generated' },
-    { label: 'Sign message authorization', desc: 'Cryptographic signature verified' },
-    { label: 'Crypto received', desc: 'Confirmed on Solana blockchain' },
-    { label: 'Conversion', desc: 'Instant liquidity pool swap to fiat' },
-    { label: 'Fiat payout', desc: `Dispatched to ${selectedAccount?.bankName || 'Bank'} (${selectedAccount?.accountNumber || ''})` },
+    { label: 'Transaction created & signed', desc: 'Solana instructions verified' },
+    { label: 'Swapping tokens', desc: 'Instant liquidity pool swap to fiat' },
+    { label: 'Crypto swapped', desc: 'Confirmed on Solana blockchain' },
+    { label: 'Processing payout', desc: `Dispatched to ${selectedAccount?.bankName || 'Bank'} (${selectedAccount?.accountNumber ? '•••• ' + selectedAccount.accountNumber.slice(-4) : ''})` },
+    { label: 'Payout completed', desc: 'Funds received by destination bank' },
   ];
 
-  const mapBackendStepToUI = (step, status) => {
+  const mapBackendStepToUI = (backendStep, status) => {
     switch (status) {
       case 'PENDING':
         return 0;
@@ -53,6 +69,7 @@ export default function MerchantSwapProcessingPage() {
       case 'SIGNED':
         return 2;
       case 'SWAPPING':
+        return 2;
       case 'SWAPPED':
         return 3;
       case 'PAYOUT_PENDING':
@@ -60,114 +77,108 @@ export default function MerchantSwapProcessingPage() {
         return 4;
       case 'COMPLETED':
         return 5;
+      case 'FAILED':
+      case 'REFUNDED':
+        return typeof backendStep === 'number' ? Math.max(0, Math.min(5, backendStep - 1)) : 2;
       default:
-        return Math.max(0, Math.min(5, (step || 1) - 1));
+        return typeof backendStep === 'number' ? Math.max(0, Math.min(5, backendStep - 1)) : 0;
     }
   };
 
-  // Step 1: Execute transaction via POST /api/offramp/execute
+  // Poll GET /api/offramp/transactions/:id/status every 2 seconds
   useEffect(() => {
-    if (!activeQuote || !selectedAccount) {
-      router.replace('/dashboard/swap');
-      return;
-    }
-
-    let mounted = true;
-
-    const startOfframp = async () => {
-      setIsExecuting(true);
-      setError('');
-      try {
-        setCurrentStep(1); // Transaction created
-        const execRes = await offrampApi.execute(activeQuote.quoteId, selectedAccount.id);
-        if (!mounted) return;
-
-        const currentTxId = execRes.transactionId;
-        setTxId(currentTxId);
-
-        // Step 2: Sign authorization if needed
-        setCurrentStep(2);
-        let signedTxStr = '';
-        if (typeof window !== 'undefined' && window.solana?.signTransaction) {
-          try {
-            signedTxStr = execRes.serializedTransaction + '_signed';
-          } catch {
-            signedTxStr = execRes.serializedTransaction || 'signed_auth';
-          }
-        } else {
-          try {
-            signedTxStr = await signMessage(`FluxPay Offramp Authorization: ${currentTxId}`);
-          } catch {
-            signedTxStr = 'auth_signed';
-          }
-        }
-
-        // Submit signature
-        await offrampApi.submit(currentTxId, signedTxStr);
-        setIsPolling(true);
-      } catch (err) {
-        if (!mounted) return;
-        console.error('[MerchantSwapProcessing] Execution error:', err);
-        setError(err?.message || 'Failed to initiate off-ramp transaction with backend.');
-      } finally {
-        if (mounted) setIsExecuting(false);
-      }
-    };
-
-    startOfframp();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Step 3: Poll GET /api/offramp/transactions/:id/status
-  useEffect(() => {
-    if (!isPolling || !txId) return;
+    if (!router.isReady || !isHydrated || !txId || !isPolling) return;
 
     let cancelled = false;
     const startTime = Date.now();
 
-    const poll = async () => {
+    const pollStatus = async () => {
       if (cancelled) return;
 
+      // 5-minute timeout guard
       if (Date.now() - startTime > 300000) {
-        setError('Transaction is taking longer than expected. Please check settlements for status.');
+        setError('Transaction processing is taking longer than expected. Please check Settlements History.');
+        setIsPolling(false);
         return;
       }
 
       try {
         const res = await offrampApi.getStatus(txId);
-        if (!cancelled && res) {
-          const uiStep = mapBackendStepToUI(res.step, res.status);
-          setCurrentStep(uiStep);
+        if (cancelled || !res) return;
 
-          if (res.isTerminal) {
-            if (res.status === 'COMPLETED') {
-              toast.success('Payout completed successfully!');
-              setTimeout(() => {
-                router.push(`/dashboard/swap/success?txId=${txId}`);
-              }, 600);
-            } else if (res.status === 'FAILED') {
-              setError(res.error || 'Transaction failed during processing');
-            }
-            return;
+        const backendStatus = res.status || 'PENDING';
+        setCurrentStatus(backendStatus);
+        if (res.stepLabel) {
+          setStatusLabel(res.stepLabel);
+        }
+
+        const uiStep = mapBackendStepToUI(res.step, backendStatus);
+        setCurrentStep(uiStep);
+
+        if (res.isTerminal) {
+          setIsPolling(false);
+
+          if (backendStatus === 'COMPLETED') {
+            setCurrentStep(5);
+            toast.success('Payout completed successfully!');
+            setTimeout(() => {
+              router.push(`/dashboard/swap/success?transactionId=${txId}&txId=${txId}`);
+            }, 800);
+          } else if (backendStatus === 'FAILED' || backendStatus === 'REFUNDED') {
+            const errMsg = res.errorMessage || res.error || 'Transaction failed during processing.';
+            setError(errMsg);
+            toast.error(errMsg);
           }
         }
       } catch (err) {
         console.warn('[MerchantSwapProcessing] Status poll error:', err);
+        // Do not fail immediately on a single transient network error
       }
     };
 
-    const interval = setInterval(poll, 2000);
+    // Immediate first poll
+    pollStatus();
+
+    // Poll every 2 seconds
+    const interval = setInterval(pollStatus, 2000);
+
     return () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isPolling, txId, router, toast]);
+  }, [router.isReady, isHydrated, txId, isPolling, router, toast]);
 
-  const token = selectedToken || { symbol: 'SOL' };
-  const fiat = selectedFiat || { symbol: '₦', code: 'NGN' };
+  // Loading state while waiting for hydration and router ready
+  if (!isHydrated || !router.isReady) {
+    return (
+      <DashboardLayout pageTitle="Processing Swap">
+        <div className="flex flex-col items-center justify-center min-h-[350px] gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600 dark:text-purple-400" />
+          <p className="text-sm font-semibold text-gray-500">Loading swap status...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Missing transactionId error state
+  if (!txId) {
+    return (
+      <DashboardLayout pageTitle="Processing Swap">
+        <PageTransition className="max-w-2xl mx-auto space-y-6 pt-4">
+          <ErrorCard
+            type="network"
+            message="No active transaction found to track. Please start a new swap from the dashboard."
+            actionLabel="Return to Swap"
+            onRetry={() => router.push('/dashboard/swap')}
+          />
+        </PageTransition>
+      </DashboardLayout>
+    );
+  }
+
+  const tokenSymbol = sourceToken?.symbol || activeQuote?.sourceToken || 'USDT';
+  const fiatSymbol = fiatCurrency?.symbol || '€';
+  const displayAmount = activeQuote?.netAmount || activeQuote?.fiatAmount || '';
 
   return (
     <DashboardLayout pageTitle="Processing Swap">
@@ -176,35 +187,47 @@ export default function MerchantSwapProcessingPage() {
         {/* Header Summary */}
         <div className="text-center space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-950/60 px-3 py-1 rounded-full border border-purple-200 dark:border-purple-800">
-            Live Settlement in Progress
+            {currentStatus === 'COMPLETED' ? 'Settlement Completed' : 'Live Settlement in Progress'}
           </span>
           <h2 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
-            Sending Payout to Bank
+            {currentStatus === 'COMPLETED' ? 'Swap Completed Successfully' : 'Sending Payout to Bank'}
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {txId ? `Tracking backend transaction ID: ${txId}` : 'Connecting to liquidity providers...'}
+            {txId ? `Tracking transaction ID: ${txId}` : 'Connecting to liquidity providers...'}
           </p>
         </div>
 
-        {/* Error Card */}
+        {/* Error Card or Steps Card */}
         {error ? (
-          <div className="p-2">
+          <div className="p-2 space-y-4">
             <ErrorCard
               type="network"
               message={error}
-              actionLabel="Return to Dashboard"
+              actionLabel="Return to Swap"
               onRetry={() => router.push('/dashboard/swap')}
             />
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setIsPolling(true);
+                }}
+                className="inline-flex items-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+              >
+                <RefreshCw size={13} />
+                <span>Retry checking status</span>
+              </button>
+            </div>
           </div>
         ) : (
-          /* Steps Card */
           <div className="bg-white dark:bg-[#0f172a]/90 border border-gray-200 dark:border-purple-500/20 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
             
             {/* Steps Visual List */}
             <div className="space-y-4">
               {steps.map((st, idx) => {
-                const isComplete = currentStep > idx;
-                const isCurrent = currentStep === idx;
+                const isComplete = currentStatus === 'COMPLETED' ? true : currentStep > idx;
+                const isCurrent = currentStatus !== 'COMPLETED' && currentStep === idx;
                 return (
                   <div key={st.label} className="flex items-start gap-3.5">
                     <div className="mt-0.5 shrink-0">
@@ -236,16 +259,26 @@ export default function MerchantSwapProcessingPage() {
             </div>
 
             {/* Payout Target Chip */}
-            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Building2 size={16} className="text-purple-500" />
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  {selectedAccount?.bankName} ({selectedAccount?.accountNumber})
-                </span>
+            {(selectedAccount || displayAmount) && (
+              <div className="p-4 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Building2 size={16} className="text-purple-500" />
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {selectedAccount?.bankName || 'Bank Account'} {selectedAccount?.accountNumber ? `(•••• ${selectedAccount.accountNumber.slice(-4)})` : ''}
+                  </span>
+                </div>
+                {displayAmount && (
+                  <span className="font-mono font-bold text-emerald-600 dark:text-teal-400 text-sm">
+                    {fiatSymbol}{Number(displayAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                )}
               </div>
-              <span className="font-mono font-bold text-emerald-600 dark:text-teal-400 text-sm">
-                {fiat.symbol}{Number(activeQuote?.netAmount || 0).toLocaleString()}
-              </span>
+            )}
+
+            {/* Real Status Footer */}
+            <div className="flex items-center justify-between text-[11px] text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
+              <span>Status: <strong className="font-mono text-purple-600 dark:text-purple-400">{currentStatus}</strong></span>
+              <span>Updated live via Helius &amp; OneLiquidity</span>
             </div>
 
           </div>

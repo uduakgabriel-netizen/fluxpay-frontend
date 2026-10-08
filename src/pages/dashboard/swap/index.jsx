@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowUpDown, ChevronDown, Check, Sparkles, ShieldCheck, Refr
 import DashboardLayout from '@/components/dashboard/layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useConsumer, FIATS } from '@/contexts/ConsumerContext';
+import { useMerchantSwap } from '@/contexts/MerchantSwapContext';
 import { assetsApi } from '@/services/api/assetsApi';
 import { quoteApi } from '@/services/api/quoteApi';
 import Skeleton, { CardSkeleton } from '@/components/shared/Skeleton';
@@ -18,20 +19,19 @@ export default function MerchantSwapPage() {
   const { merchant } = useAuth();
   const toast = useToast();
   const {
-    selectedToken: contextToken,
-    setSelectedToken: setContextToken,
-    cryptoAmount: contextAmount,
-    setCryptoAmount: setContextAmount,
-    selectedFiat: contextFiat,
-    setSelectedFiat: setContextFiat,
-    activeQuote,
-    generateQuote,
-  } = useConsumer();
+    sourceToken: swapContextToken,
+    setSourceToken: setSwapContextToken,
+    sourceAmount: swapContextAmount,
+    setSourceAmount: setSwapContextAmount,
+    fiatCurrency: swapContextFiat,
+    setFiatCurrency: setSwapContextFiat,
+    setActiveQuote: setSwapActiveQuote,
+  } = useMerchantSwap();
 
   const [tokens, setTokens] = useState([]);
-  const [selectedToken, setSelectedToken] = useState(null);
-  const [selectedFiat, setSelectedFiat] = useState(contextFiat || FIATS[0]);
-  const [inputVal, setInputVal] = useState(contextAmount || '1');
+  const [selectedToken, setSelectedToken] = useState(swapContextToken || null);
+  const [selectedFiat, setSelectedFiat] = useState(swapContextFiat || FIATS[0]);
+  const [inputVal, setInputVal] = useState(swapContextAmount || '1');
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [showFiatModal, setShowFiatModal] = useState(false);
 
@@ -102,6 +102,7 @@ export default function MerchantSwapPage() {
 
       if (requestId === quoteRequestRef.current) {
         setQuote(q);
+        setSwapActiveQuote(q);
         // Calculate remaining seconds from real expiresAt
         if (q.expiresAt) {
           const diff = Math.max(1, Math.floor((new Date(q.expiresAt).getTime() - Date.now()) / 1000));
@@ -114,6 +115,7 @@ export default function MerchantSwapPage() {
       if (requestId === quoteRequestRef.current) {
         console.error('[MerchantSwap] Quote request error:', err);
         setQuote(null);
+        setSwapActiveQuote(null);
         setQuoteError(err?.message || 'Failed to fetch live quote from backend');
       }
     } finally {
@@ -121,7 +123,7 @@ export default function MerchantSwapPage() {
         setLoadingQuote(false);
       }
     }
-  }, [selectedToken, inputVal, selectedFiat]);
+  }, [selectedToken, inputVal, selectedFiat, setSwapActiveQuote]);
 
   // Debounced quote fetch on input/token/fiat change
   useEffect(() => {
@@ -153,7 +155,7 @@ export default function MerchantSwapPage() {
   const handleAmountChange = (val) => {
     if (val === '' || /^\d*\.?\d*$/.test(val)) {
       setInputVal(val);
-      if (setContextAmount) setContextAmount(val || '0');
+      setSwapContextAmount(val || '0');
     }
   };
 
@@ -162,9 +164,10 @@ export default function MerchantSwapPage() {
       toast.error('Please wait for a live quote before proceeding');
       return;
     }
-    if (setContextToken) setContextToken(selectedToken);
-    if (setContextAmount) setContextAmount(inputVal);
-    if (setContextFiat) setContextFiat(selectedFiat);
+    setSwapContextToken(selectedToken);
+    setSwapContextAmount(inputVal);
+    setSwapContextFiat(selectedFiat);
+    setSwapActiveQuote(quote);
     router.push('/dashboard/swap/payout');
   };
 

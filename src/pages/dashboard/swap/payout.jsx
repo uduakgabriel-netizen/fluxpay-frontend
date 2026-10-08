@@ -18,7 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
-import { useConsumer } from '@/contexts/ConsumerContext';
+import { useMerchantSwap } from '@/contexts/MerchantSwapContext';
 import { payoutApi } from '@/services/api/payoutApi';
 import PageTransition from '@/components/shared/PageTransition';
 import EmptyState from '@/components/shared/EmptyState';
@@ -28,16 +28,16 @@ export default function MerchantSwapPayoutPage() {
   const router = useRouter();
   const toast = useToast();
   const {
-    bankAccounts,
+    activeQuote,
     selectedAccount,
     setSelectedAccount,
-    addBankAccount,
-    refreshAccounts,
-  } = useConsumer();
+    fiatCurrency,
+    isHydrated,
+  } = useMerchantSwap();
 
-  const accounts = bankAccounts && Array.isArray(bankAccounts) ? bankAccounts : [];
-
-  const [activeTab, setActiveTab] = useState(accounts.length > 0 ? 'saved' : 'new');
+  const [accounts, setAccounts] = useState([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [activeTab, setActiveTab] = useState('saved');
   const [banksList, setBanksList] = useState([]);
   const [loadingBanks, setLoadingBanks] = useState(true);
   const [selectedBank, setSelectedBank] = useState(null);
@@ -49,6 +49,46 @@ export default function MerchantSwapPayoutPage() {
   const [isVerified, setIsVerified] = useState(false);
   const [verificationError, setVerificationError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // If hydrated and no active quote, redirect to step 1
+  useEffect(() => {
+    if (isHydrated && !activeQuote) {
+      toast.warning('Please select an amount to get a quote first');
+      router.replace('/dashboard/swap');
+    }
+  }, [isHydrated, activeQuote, router, toast]);
+
+  // 1. Fetch saved merchant accounts from GET /api/payout-accounts
+  useEffect(() => {
+    let mounted = true;
+    setLoadingAccounts(true);
+    payoutApi
+      .listAccounts()
+      .then((res) => {
+        if (!mounted) return;
+        const list = Array.isArray(res) ? res : (res?.accounts || []);
+        setAccounts(list);
+        if (list.length > 0) {
+          if (!selectedAccount) {
+            const def = list.find((a) => a.isDefault) || list[0];
+            setSelectedAccount(def);
+          }
+          setActiveTab('saved');
+        } else {
+          setActiveTab('new');
+        }
+      })
+      .catch((err) => {
+        console.warn('[MerchantSwapPayout] Failed to fetch accounts:', err);
+      })
+      .finally(() => {
+        if (mounted) setLoadingAccounts(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // 1. Fetch real bank list from OneLiquidity via GET /api/payout-accounts/banks
   useEffect(() => {
@@ -144,9 +184,12 @@ export default function MerchantSwapPayoutPage() {
   };
 
   const handleContinueWithSaved = () => {
-    if (!selectedAccount && accounts.length > 0) {
-      setSelectedAccount(accounts[0]);
+    const acc = selectedAccount || (accounts.length > 0 ? accounts[0] : null);
+    if (!acc) {
+      toast.error('Please select a payout account');
+      return;
     }
+    setSelectedAccount(acc);
     router.push('/dashboard/swap/confirm');
   };
 
@@ -158,12 +201,12 @@ export default function MerchantSwapPayoutPage() {
 
     setIsSaving(true);
     try {
-      const created = await addBankAccount({
+      const created = await payoutApi.addAccount({
         bankName: selectedBank.name,
-        bankCode: selectedBank.code,
         accountNumber,
         accountName,
-        currency: 'NGN',
+        currency: fiatCurrency?.code || 'NGN',
+        setDefault: true,
       });
       setSelectedAccount(created);
       toast.success('Payout account saved');
