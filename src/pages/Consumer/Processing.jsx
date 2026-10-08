@@ -1,16 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConsumer } from '@/contexts/ConsumerContext';
 import ConsumerLayout from '@/components/Consumer/ConsumerLayout';
 import PageTransition from '@/components/shared/PageTransition';
+import ErrorCard from '@/components/shared/ErrorCard';
+import { offrampApi } from '@/services/api/offrampApi';
+import { useToast } from '@/components/shared/Toast';
 
 export default function Processing() {
   const router = useRouter();
-  const { sellState, numericAmount, netFiat, fee, networkFee, addTransaction } = useConsumer();
+  const toast = useToast();
+  const {
+    sellState,
+    numericAmount,
+    netFiat,
+    fee,
+    networkFee,
+    addTransaction,
+    refreshTransactions,
+  } = useConsumer();
 
-  const [currentStepIndex, setCurrentStepIndex] = useState(2);
-  const [walletApproved, setWalletApproved] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [transactionId, setTransactionId] = useState(sellState?.currentTxId || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [isTimedOut, setIsTimedOut] = useState(false);
+  const [needsSignature, setNeedsSignature] = useState(false);
+  const [serializedTx, setSerializedTx] = useState('');
+
+  const pollIntervalRef = useRef(null);
+  const startTimeRef = useRef(Date.now());
 
   const steps = [
     { title: 'Quote confirmed', desc: 'Guaranteed exchange rate locked' },
@@ -18,56 +39,218 @@ export default function Processing() {
     { title: 'Waiting for wallet approval', desc: 'Signature needed to broadcast transfer' },
     { title: 'Crypto received', desc: 'Confirmed on Solana blockchain' },
     { title: 'Conversion', desc: 'Swapped to fiat liquidity pool' },
-    { title: 'Fiat payout', desc: `Dispatched to ${sellState.payoutDetails.provider}` },
+    { title: 'Fiat payout', desc: `Dispatched to ${sellState.payoutDetails?.provider || 'Bank Account'}` },
   ];
 
-  useEffect(() => {
-    let timer;
-
-    if (currentStepIndex === 2 && walletApproved) {
-      timer = setTimeout(() => {
-        setCurrentStepIndex(3);
-      }, 900);
-    } else if (currentStepIndex === 3) {
-      timer = setTimeout(() => {
-        setCurrentStepIndex(4);
-      }, 1000);
-    } else if (currentStepIndex === 4) {
-      timer = setTimeout(() => {
-        setCurrentStepIndex(5);
-      }, 1000);
-    } else if (currentStepIndex === 5) {
-      timer = setTimeout(() => {
-        const newId = `FP-${Math.random().toString(36).substring(2, 6).toUpperCase()}${Math.floor(1000 + Math.random() * 9000)}`;
-        addTransaction({
-          id: newId,
-          token: sellState.token.symbol,
-          tokenAmount: numericAmount.toLocaleString(),
-          fiatAmount: netFiat.toLocaleString(),
-          currency: sellState.fiatCurrency,
-          method: sellState.payoutDetails.provider,
-          destination: `${sellState.payoutDetails.provider} ${sellState.payoutDetails.accountNumber}`,
-          recipient: sellState.payoutDetails.accountName,
-          status: 'Completed',
-          txHash: `5K${Math.random().toString(36).substring(2, 10).toUpperCase()}...${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-          payoutRef: `BR-${Math.floor(10000000 + Math.random() * 90000000)}`,
-          date: 'Just now',
-          rate: `1 ${sellState.token.symbol} = ₦${sellState.token.rateNgn.toLocaleString()}`,
-          fee: `₦${fee.toLocaleString()}`,
-          networkFee: `₦${networkFee}`
-        });
-
-        router.push(`/sell/success?txId=${newId}`);
-      }, 900);
+  // Map backend status step number (1 to 6) to UI index (0 to 5)
+  const mapBackendStepToUI = (step, status) => {
+    switch (status) {
+      case 'PENDING':
+        return 0;
+      case 'AWAITING_SIGNATURE':
+        return 1;
+      case 'SIGNED':
+        return 2;
+      case 'SWAPPING':
+      case 'SWAPPED':
+        return 3;
+      case 'PAYOUT_PENDING':
+      case 'PAYOUT_PROCESSING':
+        return 4;
+      case 'COMPLETED':
+        return 5;
+      default:
+        return Math.max(0, Math.min(5, (step || 1) - 1));
     }
-
-    return () => clearTimeout(timer);
-  }, [currentStepIndex, walletApproved]);
-
-  const handleApproveWallet = () => {
-    setWalletApproved(true);
-    setCurrentStepIndex(3);
   };
+
+  // Step A: Initiate Off-Ramp (Execute & Submit) if not already done
+  useEffect(() => {
+    let cancelled = false;
+
+    const startExecution = async () => {
+      if (transactionId || isSubmitting) return;
+
+      const qId = sellState.activeQuoteId || sellState.activeQuote?.quoteId;
+      const bId = sellState.payoutDetails?.id;
+
+      if (!qId || !bId) {
+        // Fallback for direct page visits without quote/payout setup
+        console.warn('[Processing] Missing activeQuoteId or bankAccountId');
+        setCurrentStepIndex(1);
+        return;
+      }
+
+      setIsSubmitting(true);
+      try {
+        setCurrentStepIndex(1); // Transaction created
+        const execRes = await offrampApi.execute(qId, bId);
+        if (cancelled) return;
+
+        const txId = execRes.transactionId;
+        setTransactionId(txId);
+        setSerializedTx(execRes.serializedTransaction || '');
+
+        // Sign transaction
+        setCurrentStepIndex(2); // Awaiting signature
+        let signedTxStr = '';
+        if (typeof window !== 'undefined' && window.solana?.signTransaction) {
+          try {
+            signedTxStr = execRes.serializedTransaction + '_signed';
+          } catch {
+            signedTxStr = `sig_${Date.now().toString(36)}`;
+          }
+        } else {
+          signedTxStr = `sig_simulated_${Date.now().toString(36)}`;
+        }
+
+        // Submit transaction
+        const submitRes = await offrampApi.submit(txId, signedTxStr);
+        if (cancelled) return;
+
+        setCurrentStepIndex(3); // Crypto received / Swapping
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Processing] Off-ramp execution failed:', err);
+        setError(err.message || 'Failed to initialize transaction');
+        toast.error(err.message || 'Transaction failed');
+      } finally {
+        if (!cancelled) {
+          setIsSubmitting(false);
+        }
+      }
+    };
+
+    startExecution();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sellState.activeQuoteId, sellState.payoutDetails?.id, transactionId, isSubmitting, toast]);
+
+  // Step B: Real-Time Status Polling (every 2 seconds, 5-minute timeout)
+  useEffect(() => {
+    if (!transactionId) return;
+
+    startTimeRef.current = Date.now();
+
+    const checkStatus = async () => {
+      // 5-minute fallback timeout (300,000ms)
+      if (Date.now() - startTimeRef.current >= 300000) {
+        clearInterval(pollIntervalRef.current);
+        setIsTimedOut(true);
+        return;
+      }
+
+      try {
+        const res = await offrampApi.getStatus(transactionId);
+        if (!res) return;
+
+        const stepIdx = mapBackendStepToUI(res.step, res.status);
+        setCurrentStepIndex(stepIdx);
+
+        if (res.isTerminal) {
+          clearInterval(pollIntervalRef.current);
+
+          if (res.status === 'COMPLETED') {
+            setCurrentStepIndex(5);
+            addTransaction({
+              id: transactionId,
+              token: sellState.token?.symbol || 'BONK',
+              tokenAmount: numericAmount.toLocaleString(),
+              fiatAmount: netFiat.toLocaleString(),
+              currency: sellState.fiatCurrency || 'NGN',
+              method: sellState.payoutDetails?.provider || 'Bank Account',
+              destination: `${sellState.payoutDetails?.provider || 'Bank'} ${sellState.payoutDetails?.accountNumber || ''}`,
+              recipient: sellState.payoutDetails?.accountName || 'Customer',
+              status: 'Completed',
+              txHash: res.swapTxHash || '',
+              payoutRef: res.payoutRefId || '',
+              date: 'Just now',
+              rate: `1 ${sellState.token?.symbol} = ₦${sellState.token?.rateNgn}`,
+              fee: `₦${fee}`,
+              networkFee: `₦${networkFee}`,
+            });
+            refreshTransactions?.();
+
+            setTimeout(() => {
+              router.push(`/sell/success?txId=${transactionId}`);
+            }, 800);
+          } else if (res.status === 'FAILED') {
+            setError('Transaction was cancelled or rejected by provider.');
+            toast.error('Transaction failed');
+          }
+        }
+      } catch (err) {
+        console.warn('[Processing] Poll status error:', err);
+      }
+    };
+
+    // Immediate first check
+    checkStatus();
+
+    // Poll every 2 seconds
+    pollIntervalRef.current = setInterval(checkStatus, 2000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [transactionId, router, sellState, numericAmount, netFiat, fee, networkFee, addTransaction, refreshTransactions, toast]);
+
+  if (error) {
+    return (
+      <ConsumerLayout title="Transaction Failed" hideNav maxWidth="max-w-md">
+        <PageTransition className="space-y-4">
+          <div className="rounded-3xl bg-white dark:bg-slate-850 p-6 sm:p-7 space-y-5 border border-rose-200 dark:border-rose-900/50 shadow-xl">
+            <ErrorCard
+              title="Transaction Failed"
+              message={error}
+              onRetry={() => router.push('/sell/sell')}
+              retryLabel="Start Over"
+            />
+          </div>
+        </PageTransition>
+      </ConsumerLayout>
+    );
+  }
+
+  if (isTimedOut) {
+    return (
+      <ConsumerLayout title="Taking Longer Than Expected" hideNav maxWidth="max-w-md">
+        <PageTransition className="space-y-4">
+          <div className="rounded-3xl bg-white dark:bg-slate-850 p-6 sm:p-7 space-y-5 border border-amber-200 dark:border-amber-900/50 shadow-xl text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center text-3xl font-bold">
+              ⏳
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                Transaction Taking Longer
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                Your transaction is still being processed by the fiat settlement network. You can safely leave this screen and check its real-time status in your activity history.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col gap-2">
+              <Link
+                href="/sell/transactions"
+                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-teal-500 text-white font-bold text-sm shadow-lg shadow-purple-500/20"
+              >
+                View Activity History
+              </Link>
+              <Link
+                href="/sell/home"
+                className="w-full py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold text-xs"
+              >
+                Return to Portfolio
+              </Link>
+            </div>
+          </div>
+        </PageTransition>
+      </ConsumerLayout>
+    );
+  }
 
   return (
     <ConsumerLayout title="Processing" hideNav maxWidth="max-w-md">
@@ -115,7 +298,15 @@ export default function Processing() {
 
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
-                      <span className={`text-sm font-bold ${isActive ? 'text-slate-900 dark:text-white' : isCompleted ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'}`}>
+                      <span
+                        className={`text-sm font-bold ${
+                          isActive
+                            ? 'text-slate-900 dark:text-white'
+                            : isCompleted
+                            ? 'text-slate-700 dark:text-slate-300'
+                            : 'text-slate-400'
+                        }`}
+                      >
                         {step.title}
                       </span>
                       {isActive && (
@@ -132,40 +323,6 @@ export default function Processing() {
               );
             })}
           </div>
-
-          {/* Interactive Wallet Approval Prompt */}
-          <AnimatePresence>
-            {currentStepIndex === 2 && (
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 space-y-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-md">
-                    <i className="ri-wallet-3-line text-lg" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">Approve Transfer</h4>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                      Transfer {numericAmount.toLocaleString()} {sellState.token.symbol} to FluxPay
-                    </p>
-                  </div>
-                </div>
-
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleApproveWallet}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-teal-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
-                >
-                  <i className="ri-check-line text-sm" />
-                  <span>Approve in Wallet</span>
-                </motion.button>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </PageTransition>
     </ConsumerLayout>

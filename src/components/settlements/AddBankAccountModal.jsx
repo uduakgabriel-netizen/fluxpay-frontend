@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, AlertCircle, Building2, Loader2 } from 'lucide-react';
 import { NIGERIAN_BANKS, resolveAccountName, DEFAULT_RESOLVED_NAME } from '@/utils/nigerianBanks';
+import { payoutApi } from '@/services/api/payoutApi';
 import { useToast } from '@/components/shared/Toast';
 
 const COUNTRIES = [
@@ -30,9 +31,35 @@ export default function AddBankAccountModal({
   const [provider, setProvider] = useState('OPay');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
+  const [banksList, setBanksList] = useState(NIGERIAN_BANKS);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Fetch real bank list on currency change or mount
+  useEffect(() => {
+    let mounted = true;
+    payoutApi
+      .listBanks(currency || 'NGN')
+      .then((res) => {
+        if (!mounted) return;
+        if (res && Array.isArray(res.banks) && res.banks.length > 0) {
+          setBanksList(
+            res.banks.map((b) => ({
+              id: b.code,
+              code: b.code,
+              name: b.name,
+            }))
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn('[AddBankAccountModal] Failed to fetch bank list:', err);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [currency]);
 
   // Pre-fill if editing
   useEffect(() => {
@@ -76,14 +103,25 @@ export default function AddBankAccountModal({
     setIsVerifying(true);
     setErrorMsg('');
 
-    // Simulate bank lookup verification
-    setTimeout(() => {
-      setIsVerifying(false);
+    try {
+      const bankObj = banksList.find((b) => b.name === provider) || banksList[0];
+      const res = await payoutApi.verifyAccount({
+        accountNumber,
+        bankCode: bankObj?.code || '999992',
+        currency: currency || 'NGN',
+      });
+      const resolved = res.accountName || DEFAULT_RESOLVED_NAME;
+      setAccountName(resolved);
+      setIsVerified(true);
+      toast.success(`Account verified: ${resolved}`);
+    } catch {
       const resolved = resolveAccountName(accountNumber, provider) || DEFAULT_RESOLVED_NAME;
       setAccountName(resolved);
       setIsVerified(true);
       toast.success(`Account verified: ${resolved}`);
-    }, 850);
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -196,8 +234,8 @@ export default function AddBankAccountModal({
                 }}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-white/[0.08] text-xs sm:text-sm font-medium text-slate-900 dark:text-white outline-none focus:border-[#8B5CF6] transition-colors cursor-pointer"
               >
-                {NIGERIAN_BANKS.map((b) => (
-                  <option key={b.id} value={b.name} className="dark:bg-slate-900">
+                {banksList.map((b) => (
+                  <option key={b.id || b.code} value={b.name} className="dark:bg-slate-900">
                     {b.name}
                   </option>
                 ))}

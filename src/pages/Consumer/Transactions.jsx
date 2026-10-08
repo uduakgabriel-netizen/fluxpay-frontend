@@ -12,14 +12,13 @@ import PageTransition from '@/components/shared/PageTransition';
 
 export default function Transactions() {
   const router = useRouter();
-  const { transactions } = useConsumer();
+  const { transactions, refreshTransactions } = useConsumer();
   const [filter, setFilter] = useState('All');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 300);
-    return () => clearTimeout(timer);
-  }, []);
+    refreshTransactions?.().finally(() => setLoading(false));
+  }, [refreshTransactions]);
 
   const filterTabs = ['All', 'Completed', 'Processing', 'Failed'];
 

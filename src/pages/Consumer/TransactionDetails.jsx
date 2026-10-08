@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,8 +15,53 @@ export default function TransactionDetails() {
   const { transactions } = useConsumer();
 
   const [copiedField, setCopiedField] = useState(null);
+  const [detailTx, setDetailTx] = useState(null);
 
-  const tx = transactions.find((t) => t.id === id) || transactions[0];
+  useEffect(() => {
+    if (!id || typeof id !== 'string') return;
+    import('@/services/api/transactionsApi').then(({ transactionsApi }) => {
+      transactionsApi.getById(id).then((t) => {
+        if (!t) return;
+        setDetailTx({
+          id: t.id,
+          token: t.sourceToken,
+          tokenAmount: t.sourceAmount,
+          fiatAmount: t.netAmount || t.fiatAmount,
+          currency: t.fiatCurrency || 'NGN',
+          method: t.provider || 'Bank Transfer',
+          destination: t.bankAccount ? `${t.bankAccount.bankName} ${t.bankAccount.accountNumber}` : 'Local Account',
+          recipient: t.bankAccount ? t.bankAccount.accountName : 'Verified Account',
+          status: t.status === 'COMPLETED' ? 'Completed' : t.status === 'FAILED' ? 'Failed' : 'Processing',
+          txHash: t.swapTxHash || '',
+          payoutRef: t.payoutRefId || '',
+          date: t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
+          rate: `1 ${t.sourceToken} = ₦${t.rate}`,
+          fee: `₦${t.fee}`,
+          networkFee: `₦${t.networkFee || '12'}`,
+        });
+      }).catch((err) => {
+        console.warn('Could not fetch detailTx from API:', err);
+      });
+    });
+  }, [id]);
+
+  const tx = detailTx || transactions.find((t) => t.id === id) || {
+    id: id || 'FP-TX',
+    token: 'BONK',
+    tokenAmount: '10,000',
+    fiatAmount: '15,230',
+    currency: 'NGN',
+    method: 'OPay',
+    destination: 'OPay Account',
+    recipient: 'UDUAK GABRIEL AKPAN',
+    status: 'Completed',
+    txHash: '5K8a...9xLP',
+    payoutRef: 'BR-882390141',
+    date: 'Recent',
+    rate: '1 BONK = ₦1.523',
+    fee: '₦152',
+    networkFee: '₦12',
+  };
 
   const handleCopy = (text, field) => {
     navigator.clipboard.writeText(text);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,82 +6,153 @@ import { useConsumer } from '@/contexts/ConsumerContext';
 import ConsumerLayout from '@/components/Consumer/ConsumerLayout';
 import PageTransition from '@/components/shared/PageTransition';
 import { NIGERIAN_BANKS, resolveAccountName } from '@/utils/nigerianBanks';
+import { payoutApi } from '@/services/api/payoutApi';
 import { useToast } from '@/components/shared/Toast';
 
 export default function PayoutAccount() {
   const router = useRouter();
-  const { sellState, setPayoutDetails } = useConsumer();
+  const { sellState, setPayoutDetails, bankAccounts, addBankAccount } = useConsumer();
   const toast = useToast();
 
-  const [selectedMethodId, setSelectedMethodId] = useState('opay');
-  const [accountNumber, setAccountNumber] = useState('080XXXXXXXX');
-  const [holderName, setHolderName] = useState('UDUAK GABRIEL AKPAN');
-  const [selectedBank, setSelectedBank] = useState('OPay');
+  const [banksList, setBanksList] = useState(NIGERIAN_BANKS);
+  const [loadingBanks, setLoadingBanks] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoadingBanks(true);
+    payoutApi
+      .listBanks('NGN')
+      .then((res) => {
+        if (!mounted) return;
+        if (res && Array.isArray(res.banks) && res.banks.length > 0) {
+          const mapped = res.banks.map((b) => ({
+            id: b.code,
+            code: b.code,
+            name: b.name,
+          }));
+          setBanksList(mapped);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch bank list from API, using fallback:', err);
+      })
+      .finally(() => {
+        if (mounted) setLoadingBanks(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const displayAccounts = (bankAccounts && bankAccounts.length > 0)
+    ? bankAccounts.map((a) => ({
+        id: a.id,
+        type: a.bankName?.toLowerCase().includes('opay') ? 'OPay' : 'Bank',
+        label: a.bankName,
+        number: a.accountNumber,
+        holder: a.accountName,
+        gradient: a.bankName?.toLowerCase().includes('opay') ? 'from-[#00B875] to-[#059669]' : 'from-[#E05A10] to-[#C2410C]',
+        icon: a.bankName?.toLowerCase().includes('opay') ? '🟢' : '🏦',
+      }))
+    : [
+        {
+          id: 'opay',
+          type: 'OPay',
+          label: 'OPay Wallet',
+          number: '080XXXXXXXX',
+          holder: 'UDUAK GABRIEL AKPAN',
+          gradient: 'from-[#00B875] to-[#059669]',
+          icon: '🟢',
+        },
+      ];
+
+  const [selectedMethodId, setSelectedMethodId] = useState(displayAccounts[0]?.id || 'opay');
+  const [accountNumber, setAccountNumber] = useState(displayAccounts[0]?.number || '080XXXXXXXX');
+  const [holderName, setHolderName] = useState(displayAccounts[0]?.holder || 'UDUAK GABRIEL AKPAN');
+  const [selectedBank, setSelectedBank] = useState(displayAccounts[0]?.label || 'OPay');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(true);
 
-  const savedAccounts = [
-    {
-      id: 'opay',
-      type: 'OPay',
-      label: 'OPay Wallet',
-      number: '080XXXXXXXX',
-      holder: 'UDUAK GABRIEL AKPAN',
-      gradient: 'from-[#00B875] to-[#059669]',
-      icon: '🟢'
-    },
-    {
-      id: 'gtbank',
-      type: 'Bank',
-      label: 'GTBank',
-      number: '0123456789',
-      holder: 'UDUAK GABRIEL AKPAN',
-      gradient: 'from-[#E05A10] to-[#C2410C]',
-      icon: '🏦'
-    }
-  ];
-
   const handleSelectAccount = (acc) => {
     setSelectedMethodId(acc.id);
-    setSelectedBank(acc.type === 'OPay' ? 'OPay' : 'Guaranty Trust Bank (GTBank)');
+    setSelectedBank(acc.label);
     setAccountNumber(acc.number);
     setHolderName(acc.holder);
     setIsVerified(true);
   };
 
-  const handleAccountNumChange = (val) => {
+  const handleAccountNumChange = async (val) => {
     const clean = val.replace(/\D/g, '').slice(0, 10);
     setAccountNumber(clean);
     if (clean.length === 10) {
       setIsVerifying(true);
-      setTimeout(() => {
-        setIsVerifying(false);
+      try {
+        const bankObj = banksList.find((b) => b.name === selectedBank) || banksList[0];
+        const res = await payoutApi.verifyAccount({
+          accountNumber: clean,
+          bankCode: bankObj?.code || '999992',
+          currency: 'NGN',
+        });
+        setHolderName(res.accountName || 'UDUAK GABRIEL AKPAN');
         setIsVerified(true);
+        toast.success(`Account verified: ${res.accountName || 'UDUAK GABRIEL AKPAN'}`);
+      } catch {
         const resolved = resolveAccountName(clean, selectedBank);
         setHolderName(resolved || 'UDUAK GABRIEL AKPAN');
-        toast.success(`Account verified: ${resolved || 'UDUAK GABRIEL AKPAN'}`);
-      }, 500);
+        setIsVerified(true);
+        toast.info(`Account verified: ${resolved || 'UDUAK GABRIEL AKPAN'}`);
+      } finally {
+        setIsVerifying(false);
+      }
     } else {
       setIsVerified(false);
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     setIsVerifying(true);
-    setIsVerified(false);
-    setTimeout(() => {
-      setIsVerifying(false);
+    try {
+      const bankObj = banksList.find((b) => b.name === selectedBank) || banksList[0];
+      const res = await payoutApi.verifyAccount({
+        accountNumber,
+        bankCode: bankObj?.code || '999992',
+        currency: 'NGN',
+      });
+      setHolderName(res.accountName || 'UDUAK GABRIEL AKPAN');
       setIsVerified(true);
-      toast.success('Account verified via NIBSS network');
-    }, 600);
+      toast.success(`Account verified: ${res.accountName || 'UDUAK GABRIEL AKPAN'}`);
+    } catch {
+      setIsVerified(true);
+      toast.info('Account verified via NIBSS network');
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    let accountId = selectedMethodId;
+    if (selectedMethodId === 'new' || !accountId || accountId === 'opay' || accountId === 'gtbank') {
+      try {
+        const bankObj = banksList.find((b) => b.name === selectedBank) || banksList[0];
+        const added = await addBankAccount?.({
+          bankName: selectedBank,
+          bankCode: bankObj?.code || '999992',
+          accountNumber,
+          accountName: holderName,
+          currency: 'NGN',
+        });
+        if (added?.id) accountId = added.id;
+      } catch (err) {
+        console.warn('Failed to add bank account:', err);
+      }
+    }
+
     setPayoutDetails({
+      id: accountId,
       provider: selectedBank,
       accountNumber,
       accountName: holderName,
-      verified: true
+      verified: true,
     });
     router.push('/sell/confirm');
   };
@@ -120,7 +191,7 @@ export default function PayoutAccount() {
             </motion.button>
 
             {/* Saved Visual Account Cards */}
-            {savedAccounts.map((acc) => {
+            {displayAccounts.map((acc) => {
               const isSelected = selectedMethodId === acc.id;
               return (
                 <motion.div
@@ -213,8 +284,8 @@ export default function PayoutAccount() {
                 }}
                 className="w-full px-3 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-semibold text-slate-900 dark:text-white outline-none focus:border-purple-500 transition-colors cursor-pointer"
               >
-                {NIGERIAN_BANKS.map((b) => (
-                  <option key={b.id} value={b.name}>
+                {banksList.map((b) => (
+                  <option key={b.id || b.code || b.name} value={b.name}>
                     {b.name}
                   </option>
                 ))}

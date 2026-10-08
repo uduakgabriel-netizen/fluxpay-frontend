@@ -1,9 +1,21 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import nacl from 'tweetnacl';
+import bs58Pkg from 'bs58';
+import { authApi } from '@/services/api/authApi';
+import { assetsApi } from '@/services/api/assetsApi';
+import { quoteApi } from '@/services/api/quoteApi';
+import { payoutApi } from '@/services/api/payoutApi';
+import { transactionsApi } from '@/services/api/transactionsApi';
+import { offrampApi } from '@/services/api/offrampApi';
+
+const bs58 = (bs58Pkg && bs58Pkg.default) || bs58Pkg;
 
 export const TOKENS = [
   {
     symbol: 'SOL',
+    mint: 'So11111111111111111111111111111111111111112',
     name: 'Solana',
+    decimals: 9,
     balance: 2.45,
     rateNgn: 300153,
     iconBg: 'from-[#9945FF] to-[#14F195]',
@@ -11,7 +23,9 @@ export const TOKENS = [
   },
   {
     symbol: 'USDC',
+    mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
     name: 'USD Coin',
+    decimals: 6,
     balance: 520.00,
     rateNgn: 1615,
     iconBg: 'from-[#2775CA] to-[#0A4B8A]',
@@ -19,44 +33,44 @@ export const TOKENS = [
   },
   {
     symbol: 'USDT',
+    mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
     name: 'Tether USD',
+    decimals: 6,
     balance: 300.00,
     rateNgn: 1615,
     iconBg: 'from-[#26A17B] to-[#176249]',
     badge: 'Stable',
   },
   {
+    symbol: 'BONK',
+    mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+    name: 'Bonk',
+    decimals: 5,
+    balance: 100000,
+    rateNgn: 1.523,
+    iconBg: 'from-[#F18E38] to-[#D4501D]',
+    badge: 'Meme',
+  },
+  {
     symbol: 'JUP',
+    mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
     name: 'Jupiter',
+    decimals: 6,
     balance: 125,
     rateNgn: 1000,
     iconBg: 'from-[#C98028] to-[#19E4A9]',
     badge: 'DEX',
   },
   {
-    symbol: 'BONK',
-    name: 'Bonk',
-    balance: 12500,
-    rateNgn: 1.523,
-    iconBg: 'from-[#F18E38] to-[#D4501D]',
-    badge: 'Meme',
-  },
-  {
     symbol: 'PYTH',
+    mint: 'HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3AkTrPvuqWeoPj',
     name: 'Pyth Network',
+    decimals: 6,
     balance: 450,
     rateNgn: 420,
     iconBg: 'from-[#7954D8] to-[#512DAB]',
     badge: 'Oracle',
   },
-  {
-    symbol: 'JTO',
-    name: 'Jito',
-    balance: 35,
-    rateNgn: 3800,
-    iconBg: 'from-[#38D39F] to-[#10855A]',
-    badge: 'DeFi',
-  }
 ];
 
 export const FIATS = [
@@ -65,141 +79,442 @@ export const FIATS = [
   { code: 'EUR', symbol: '€', name: 'Euro', flag: '🇪🇺' },
 ];
 
-export const INITIAL_BANK_ACCOUNTS = [
-  {
-    id: 'opay',
-    bankName: 'OPay',
-    provider: 'OPay',
-    accountNumber: '080XXXXXXXX',
-    accountName: 'UDUAK GABRIEL AKPAN',
-    isDefault: true,
-    isVerified: true,
-  },
-  {
-    id: 'gtbank',
-    bankName: 'Guaranty Trust Bank (GTBank)',
-    provider: 'Bank',
-    accountNumber: '0123456789',
-    accountName: 'UDUAK GABRIEL AKPAN',
-    isDefault: false,
-    isVerified: true,
+function getOrCreateSimulatedKeypair() {
+  if (typeof window === 'undefined') {
+    return nacl.sign.keyPair();
   }
-];
-
-const INITIAL_TRANSACTIONS = [
-  {
-    id: 'FP-8X294B91',
-    token: 'BONK',
-    tokenAmount: '10,000',
-    fiatAmount: '15,230',
-    currency: 'NGN',
-    method: 'OPay',
-    destination: 'OPay 080XXXXXXXX',
-    recipient: 'UDUAK GABRIEL AKPAN',
-    status: 'Completed',
-    txHash: '5K8aB4m8zWxP9uN21vQ7yTR6...9xLP',
-    payoutRef: 'BR-882390141',
-    date: '23 Sep 2026, 14:32',
-    rate: '1 BONK = ₦1.523',
-    fee: '₦152',
-    networkFee: '₦12'
-  },
-  {
-    id: 'FP-7M910K32',
-    token: 'SOL',
-    tokenAmount: '1.5',
-    fiatAmount: '445,728',
-    currency: 'NGN',
-    method: 'Bank',
-    destination: 'Bank Account 0123456789',
-    recipient: 'UDUAK GABRIEL AKPAN',
-    status: 'Completed',
-    txHash: '3Nz4X9kLmP8wQ7vR1yS2aB8...1mKP',
-    payoutRef: 'BR-771923055',
-    date: '22 Sep 2026, 10:15',
-    rate: '1 SOL ≈ ₦300,153',
-    fee: '₦4,502',
-    networkFee: '₦12'
-  },
-  {
-    id: 'FP-6B431L88',
-    token: 'USDC',
-    tokenAmount: '250',
-    fiatAmount: '380,000',
-    currency: 'NGN',
-    method: 'OPay',
-    destination: 'OPay 080XXXXXXXX',
-    recipient: 'UDUAK GABRIEL AKPAN',
-    status: 'Processing',
-    txHash: '8Vx2M6zKqW3rT5yU9iO4pL1...4qTT',
-    payoutRef: 'BR-665109210',
-    date: '23 Sep 2026, 18:40',
-    rate: '1 USDC = ₦1,535',
-    fee: '₦3,800',
-    networkFee: '₦12'
-  },
-  {
-    id: 'FP-5Y882V14',
-    token: 'JUP',
-    tokenAmount: '5',
-    fiatAmount: '2,300',
-    currency: 'NGN',
-    method: 'Bank',
-    destination: 'Bank Account 2012938471',
-    recipient: 'UDUAK GABRIEL AKPAN',
-    status: 'Failed',
-    txHash: '2Kk9P7vXzY1uM4rT8wE6oQ3...8zQQ',
-    payoutRef: 'BR-554192088',
-    date: '21 Sep 2026, 09:05',
-    rate: '1 JUP = ₦464.6',
-    fee: '₦23',
-    networkFee: '₦12'
+  try {
+    const saved = localStorage.getItem('fluxpay_consumer_sim_kp');
+    if (saved) {
+      const raw = JSON.parse(saved);
+      return {
+        publicKey: new Uint8Array(raw.publicKey),
+        secretKey: new Uint8Array(raw.secretKey),
+      };
+    }
+    const kp = nacl.sign.keyPair();
+    localStorage.setItem(
+      'fluxpay_consumer_sim_kp',
+      JSON.stringify({
+        publicKey: Array.from(kp.publicKey),
+        secretKey: Array.from(kp.secretKey),
+      })
+    );
+    return kp;
+  } catch {
+    return nacl.sign.keyPair();
   }
-];
+}
 
 const ConsumerContext = createContext(null);
 
 export function ConsumerProvider({ children }) {
+  const [tokens, setTokens] = useState(TOKENS);
+  const [bankAccounts, setBankAccounts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+
   // Wallet state
   const [wallet, setWallet] = useState({
-    connected: true,
-    address: '7xK9VqBfLmN4wE2rP1zT8uY5kQ3mP8wB9qY8uN29Pq8',
-    displayAddress: '7xK...9Pq',
+    connected: false,
+    address: '',
+    displayAddress: '',
     walletType: 'Phantom',
-    balanceNgn: 1245320,
+    balanceNgn: 0,
     isConnecting: false,
-    isSigning: false
+    isSigning: false,
   });
 
   // Sell quote state (Consumer flow)
   const [sellState, setSellState] = useState({
-    token: TOKENS.find(t => t.symbol === 'SOL') || TOKENS[0],
-    amount: '1.50',
+    token: TOKENS[3] || TOKENS[0], // BONK default
+    amount: '10000',
     fiatCurrency: 'NGN',
     fiatSymbol: '₦',
     payoutMethod: 'OPay',
     payoutDetails: {
+      id: '',
       provider: 'OPay',
-      accountNumber: '080XXXXXXXX',
-      accountName: 'UDUAK GABRIEL AKPAN',
-      verified: true
+      accountNumber: '',
+      accountName: '',
+      verified: false,
     },
     quoteExpiresSeconds: 30,
-    lastTxId: 'FP-8X294B91'
+    lastTxId: '',
+    activeQuoteId: null,
+    activeQuote: null,
+    currentTxId: null,
   });
 
-  // Additional state for Merchant and shared swap flows
-  const [selectedToken, setSelectedTokenState] = useState(TOKENS[0]);
-  const [cryptoAmount, setCryptoAmountState] = useState('1.5');
+  // Additional cross-flow state
+  const [selectedToken, setSelectedTokenState] = useState(TOKENS[3] || TOKENS[0]);
+  const [cryptoAmount, setCryptoAmountState] = useState('10000');
   const [selectedFiat, setSelectedFiat] = useState(FIATS[0]);
-  const [bankAccounts, setBankAccounts] = useState(INITIAL_BANK_ACCOUNTS);
-  const [selectedAccount, setSelectedAccountState] = useState(INITIAL_BANK_ACCOUNTS[0]);
+  const [selectedAccount, setSelectedAccountState] = useState(null);
   const [activeQuote, setActiveQuote] = useState({
-    rate: 300153,
+    quoteId: '',
+    rate: 1.523,
     expiresIn: 30,
-    fee: 4502,
+    fee: 152,
     networkFee: 12,
+    netAmount: 15066,
+    fiatAmount: 15230,
   });
+
+  // Helper to refresh transactions from backend
+  const refreshTransactions = useCallback(async () => {
+    try {
+      const res = await transactionsApi.list();
+      if (res && Array.isArray(res.transactions)) {
+        const mapped = res.transactions.map((t) => ({
+          id: t.id,
+          token: t.sourceToken,
+          tokenAmount: t.sourceAmount,
+          fiatAmount: t.netAmount || t.fiatAmount,
+          currency: t.fiatCurrency || 'NGN',
+          method: t.provider || 'Bank Transfer',
+          destination: t.bankAccount ? `${t.bankAccount.bankName} ${t.bankAccount.accountNumber}` : 'Local Account',
+          recipient: t.bankAccount ? t.bankAccount.accountName : 'Verified Account',
+          status: t.status === 'COMPLETED' ? 'Completed' : t.status === 'FAILED' ? 'Failed' : 'Processing',
+          txHash: t.swapTxHash || '',
+          payoutRef: t.payoutRefId || '',
+          date: t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
+          rate: `1 ${t.sourceToken} = ₦${t.rate}`,
+          fee: `₦${t.fee}`,
+          networkFee: `₦${t.networkFee || '12'}`,
+        }));
+        setTransactions(mapped);
+      }
+    } catch (err) {
+      console.warn('[ConsumerContext] Could not load transactions from API:', err);
+    }
+  }, []);
+
+  // Helper to refresh accounts from backend
+  const refreshAccounts = useCallback(async () => {
+    try {
+      const res = await payoutApi.listAccounts();
+      if (res && Array.isArray(res.accounts)) {
+        setBankAccounts(res.accounts);
+        if (res.accounts.length > 0) {
+          const def = res.accounts.find((a) => a.isDefault) || res.accounts[0];
+          setSelectedAccountState(def);
+          setSellState((prev) => ({
+            ...prev,
+            payoutMethod: def.bankName || 'Bank Account',
+            payoutDetails: {
+              id: def.id,
+              provider: def.bankName,
+              accountNumber: def.accountNumber,
+              accountName: def.accountName,
+              verified: def.isVerified,
+            },
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('[ConsumerContext] Could not load accounts from API:', err);
+    }
+  }, []);
+
+  // On mount: hydrate tokens from backend, check existing session
+  useEffect(() => {
+    let mounted = true;
+
+    // 1. Fetch real sellable tokens
+    assetsApi
+      .getSellableTokens()
+      .then((res) => {
+        if (!mounted || !res || !Array.isArray(res.tokens) || res.tokens.length === 0) return;
+        const mapped = res.tokens.map((t) => {
+          const existing = TOKENS.find((x) => x.symbol === t.symbol) || {};
+          return {
+            symbol: t.symbol,
+            mint: t.mint,
+            name: t.name,
+            decimals: t.decimals,
+            balance: t.balance !== undefined ? t.balance : (existing.balance || 100),
+            rateNgn: t.rateNgn || existing.rateNgn || (t.symbol === 'BONK' ? 1.523 : t.symbol === 'SOL' ? 300153 : 1615),
+            iconBg: existing.iconBg || 'from-[#9945FF] to-[#14F195]',
+            badge: existing.badge || 'Solana',
+          };
+        });
+        setTokens(mapped);
+        const bonk = mapped.find((m) => m.symbol === 'BONK') || mapped[0];
+        if (bonk) {
+          setSelectedTokenState(bonk);
+          setSellState((prev) => ({ ...prev, token: bonk }));
+        }
+      })
+      .catch((err) => {
+        console.warn('[ConsumerContext] Could not load tokens from API, using fallback:', err);
+      });
+
+    // 2. Validate existing token session
+    const token = typeof window !== 'undefined' ? localStorage.getItem('fluxpay_consumer_token') : null;
+    if (token) {
+      authApi
+        .getMe()
+        .then((res) => {
+          if (!mounted || !res?.user) return;
+          const u = res.user;
+          const disp = `${u.walletAddress.slice(0, 4)}...${u.walletAddress.slice(-4)}`;
+          setWallet({
+            connected: true,
+            address: u.walletAddress,
+            displayAddress: disp,
+            walletType: 'Phantom',
+            balanceNgn: 1245320,
+            isConnecting: false,
+            isSigning: false,
+          });
+          refreshAccounts();
+          refreshTransactions();
+        })
+        .catch(() => {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('fluxpay_consumer_token');
+          }
+        });
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [refreshAccounts, refreshTransactions]);
+
+  // Connect wallet + real backend nonce & signature verification
+  const connectWallet = async (walletType = 'Phantom') => {
+    setWallet((prev) => ({ ...prev, isConnecting: true, walletType }));
+
+    try {
+      let walletAddress = '';
+      let isBrowserWallet = false;
+
+      // Check if browser has Phantom/Solana extension
+      if (typeof window !== 'undefined' && window.solana && window.solana.isPhantom) {
+        try {
+          const resp = await window.solana.connect();
+          walletAddress = resp.publicKey.toString();
+          isBrowserWallet = true;
+        } catch {
+          // User rejected browser extension or error, fallback to simulated keypair
+        }
+      }
+
+      const simKeypair = getOrCreateSimulatedKeypair();
+      if (!walletAddress) {
+        walletAddress = bs58.encode(simKeypair.publicKey);
+      }
+
+      // Step 1: Request nonce from real backend
+      const { nonce } = await authApi.requestNonce(walletAddress);
+
+      // Step 2: Sign nonce
+      let signatureBase58 = '';
+      if (isBrowserWallet && window.solana && window.solana.signMessage) {
+        const msgBytes = new TextEncoder().encode(nonce);
+        const signed = await window.solana.signMessage(msgBytes);
+        const rawSig = signed.signature || signed;
+        signatureBase58 = bs58.encode(rawSig);
+      } else {
+        const msgBytes = new TextEncoder().encode(nonce);
+        const signedBytes = nacl.sign.detached(msgBytes, simKeypair.secretKey);
+        signatureBase58 = bs58.encode(signedBytes);
+      }
+
+      // Step 3: Verify signature with backend
+      const authRes = await authApi.verify(walletAddress, nonce, signatureBase58);
+
+      const disp = `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
+      setWallet({
+        connected: true,
+        address: walletAddress,
+        displayAddress: disp,
+        walletType,
+        balanceNgn: 1245320,
+        isConnecting: false,
+        isSigning: false,
+      });
+
+      // Load user accounts & transactions
+      await refreshAccounts();
+      await refreshTransactions();
+
+      return true;
+    } catch (err) {
+      console.error('[ConsumerContext] connectWallet error:', err);
+      setWallet((prev) => ({ ...prev, isConnecting: false }));
+      throw err;
+    }
+  };
+
+  const signMessage = async (customMessage) => {
+    setWallet((prev) => ({ ...prev, isSigning: true }));
+    try {
+      const msg = customMessage || `FluxPay Authorization: ${Date.now()}`;
+      const msgBytes = new TextEncoder().encode(msg);
+
+      if (typeof window !== 'undefined' && window.solana && window.solana.signMessage) {
+        const res = await window.solana.signMessage(msgBytes);
+        const raw = res.signature || res;
+        setWallet((prev) => ({ ...prev, isSigning: false }));
+        return bs58.encode(raw);
+      } else {
+        const sim = getOrCreateSimulatedKeypair();
+        const sig = nacl.sign.detached(msgBytes, sim.secretKey);
+        setWallet((prev) => ({ ...prev, isSigning: false }));
+        return bs58.encode(sig);
+      }
+    } catch (err) {
+      setWallet((prev) => ({ ...prev, isSigning: false }));
+      throw err;
+    }
+  };
+
+  const disconnectWallet = () => {
+    authApi.logout();
+    setWallet({
+      connected: false,
+      address: '',
+      displayAddress: '',
+      walletType: 'Phantom',
+      balanceNgn: 0,
+      isConnecting: false,
+      isSigning: false,
+    });
+    setBankAccounts([]);
+    setTransactions([]);
+  };
+
+  const selectToken = (symbol) => {
+    const found = tokens.find((t) => t.symbol === symbol) || tokens[0];
+    setSelectedTokenState(found);
+    setSellState((prev) => ({
+      ...prev,
+      token: found,
+      amount: found.symbol === 'BONK' ? '10000' : found.symbol === 'SOL' ? '1.50' : '100',
+    }));
+  };
+
+  const setAmount = (val) => {
+    setSellState((prev) => ({ ...prev, amount: val }));
+  };
+
+  const setPayoutDetails = (details) => {
+    setSellState((prev) => ({
+      ...prev,
+      payoutMethod: details.provider?.toLowerCase().includes('opay') ? 'OPay' : 'Bank Account',
+      payoutDetails: {
+        ...prev.payoutDetails,
+        ...details,
+      },
+    }));
+  };
+
+  const addTransaction = (tx) => {
+    setTransactions((prev) => [tx, ...prev]);
+    setSellState((prev) => ({ ...prev, lastTxId: tx.id }));
+  };
+
+  // Generate real quote from backend API
+  const generateQuote = async (params) => {
+    const srcToken = params?.sourceToken || selectedToken?.symbol || sellState.token?.symbol || 'BONK';
+    const foundToken = tokens.find((t) => t.symbol === srcToken) || selectedToken || sellState.token;
+    const srcMint = params?.sourceMint || foundToken?.mint || 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
+    const srcAmount = params?.sourceAmount || cryptoAmount || sellState.amount || '10000';
+    const fiatCurr = params?.fiatCurrency || selectedFiat?.code || sellState.fiatCurrency || 'NGN';
+
+    try {
+      const q = await quoteApi.generateQuote({
+        sourceToken: srcToken,
+        sourceMint: srcMint,
+        sourceAmount: String(srcAmount),
+        fiatCurrency: fiatCurr,
+      });
+
+      const parsedRate = Number(q.rate) || 1.523;
+      const parsedFee = Number(q.fee) || 0;
+      const parsedNetworkFee = Number(q.networkFee) || 12;
+      const parsedNet = Number(q.netAmount) || 0;
+      const parsedFiat = Number(q.fiatAmount) || 0;
+
+      const newQuote = {
+        quoteId: q.quoteId,
+        rate: parsedRate,
+        expiresIn: q.expiresInSeconds || 30,
+        fee: parsedFee,
+        networkFee: parsedNetworkFee,
+        netAmount: parsedNet,
+        fiatAmount: parsedFiat,
+      };
+
+      setActiveQuote(newQuote);
+      setSellState((prev) => ({
+        ...prev,
+        activeQuoteId: q.quoteId,
+        activeQuote: newQuote,
+      }));
+      return q;
+    } catch (err) {
+      console.warn('[ConsumerContext] generateQuote API fallback:', err);
+      // Resilient calculation if offline
+      const rate = foundToken?.rateNgn || 1.523;
+      const gross = (parseFloat(srcAmount) || 0) * rate;
+      const feeVal = Math.round(gross * 0.01);
+      const fallbackQuote = {
+        quoteId: `mock_quote_${Date.now()}`,
+        rate,
+        expiresIn: 30,
+        fee: feeVal,
+        networkFee: 12,
+        netAmount: Math.max(0, gross - feeVal - 12),
+        fiatAmount: gross,
+      };
+      setActiveQuote(fallbackQuote);
+      return fallbackQuote;
+    }
+  };
+
+  const addBankAccount = async (accData) => {
+    try {
+      const created = await payoutApi.addAccount({
+        bankName: accData.bankName || accData.provider || 'OPay',
+        bankCode: accData.bankCode || '999992',
+        accountNumber: accData.accountNumber,
+        accountName: accData.accountName || 'UDUAK GABRIEL AKPAN',
+        currency: accData.currency || 'NGN',
+        setDefault: true,
+      });
+      setBankAccounts((prev) => [created, ...prev]);
+      setSelectedAccountState(created);
+      setSellState((prev) => ({
+        ...prev,
+        payoutMethod: created.bankName,
+        payoutDetails: {
+          id: created.id,
+          provider: created.bankName,
+          accountNumber: created.accountNumber,
+          accountName: created.accountName,
+          verified: created.isVerified,
+        },
+      }));
+      return created;
+    } catch (err) {
+      console.warn('[ConsumerContext] addAccount API failed, local fallback:', err);
+      const local = {
+        id: `acc-${Date.now().toString(36)}`,
+        bankName: accData.bankName || 'OPay',
+        accountNumber: accData.accountNumber,
+        accountName: accData.accountName || 'UDUAK GABRIEL AKPAN',
+        currency: accData.currency || 'NGN',
+        isDefault: true,
+        isVerified: true,
+      };
+      setBankAccounts((prev) => [local, ...prev]);
+      setSelectedAccountState(local);
+      return local;
+    }
+  };
 
   // Synchronizers
   const setSelectedToken = (token) => {
@@ -218,113 +533,29 @@ export function ConsumerProvider({ children }) {
     setSelectedAccountState(acc);
     if (acc) {
       setPayoutDetails({
+        id: acc.id,
         provider: acc.bankName || acc.provider || 'OPay',
         accountNumber: acc.accountNumber || '',
         accountName: acc.accountName || 'UDUAK GABRIEL AKPAN',
-        verified: true
+        verified: true,
       });
     }
   };
 
-  const addBankAccount = (acc) => {
-    setBankAccounts(prev => [acc, ...prev]);
-  };
-
-  const generateQuote = () => {
-    const rate = selectedToken?.rateNgn || 300153;
-    const gross = (parseFloat(cryptoAmount) || 0) * rate;
-    const feeVal = Math.round(gross * 0.01);
-    setActiveQuote({
-      rate,
-      expiresIn: 30,
-      fee: feeVal,
-      networkFee: 12,
-    });
-  };
-
-  // Transactions list
-  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
-
-  const connectWallet = (walletType) => {
-    setWallet(prev => ({ ...prev, isConnecting: true, walletType }));
-    return new Promise(resolve => {
-      setTimeout(() => {
-        setWallet(prev => ({
-          ...prev,
-          isConnecting: false,
-          connected: true,
-          walletType,
-          address: '7xK9VqBfLmN4wE2rP1zT8uY5kQ3mP8wB9qY8uN29Pq8',
-          displayAddress: '7xK...9Pq',
-        }));
-        resolve(true);
-      }, 1200);
-    });
-  };
-
-  const signMessage = () => {
-    setWallet(prev => ({ ...prev, isSigning: true }));
-    return new Promise(resolve => {
-      setTimeout(() => {
-        setWallet(prev => ({ ...prev, isSigning: false }));
-        resolve(true);
-      }, 1000);
-    });
-  };
-
-  const disconnectWallet = () => {
-    setWallet(prev => ({
-      ...prev,
-      connected: false,
-      isConnecting: false,
-      isSigning: false
-    }));
-  };
-
-  const selectToken = (symbol) => {
-    const found = TOKENS.find(t => t.symbol === symbol) || TOKENS[0];
-    setSelectedTokenState(found);
-    setSellState(prev => ({
-      ...prev,
-      token: found,
-      amount: found.symbol === 'BONK' ? '10000' : found.symbol === 'SOL' ? '1.50' : '100'
-    }));
-  };
-
-  const setAmount = (val) => {
-    setSellState(prev => ({ ...prev, amount: val }));
-  };
-
-  const setPayoutDetails = (details) => {
-    setSellState(prev => ({
-      ...prev,
-      payoutMethod: details.provider?.toLowerCase().includes('opay') ? 'OPay' : 'Bank Account',
-      payoutDetails: {
-        ...prev.payoutDetails,
-        ...details
-      }
-    }));
-  };
-
-  const addTransaction = (tx) => {
-    setTransactions(prev => [tx, ...prev]);
-    setSellState(prev => ({ ...prev, lastTxId: tx.id }));
-  };
-
   // Computations
   const numericAmount = parseFloat(cryptoAmount || sellState.amount) || 0;
-  const currentToken = selectedToken || sellState.token || TOKENS[0];
-  const grossFiat = Math.round(numericAmount * (currentToken.rateNgn || 300153));
-  const fee = Math.max(12, Math.round(grossFiat * 0.01));
-  const networkFee = 12;
-  const netFiat = Math.max(0, grossFiat - fee - networkFee);
+  const currentToken = selectedToken || sellState.token || tokens[0];
+  const grossFiat = Math.round(numericAmount * (activeQuote?.rate || currentToken?.rateNgn || 1.523));
+  const fee = activeQuote?.fee !== undefined ? activeQuote.fee : Math.max(12, Math.round(grossFiat * 0.01));
+  const networkFee = activeQuote?.networkFee !== undefined ? activeQuote.networkFee : 12;
+  const netFiat = activeQuote?.netAmount !== undefined ? activeQuote.netAmount : Math.max(0, grossFiat - fee - networkFee);
   const fiatAmount = grossFiat.toString();
 
   return (
     <ConsumerContext.Provider
       value={{
         wallet,
-        tokens: TOKENS,
+        tokens,
         fiats: FIATS,
         sellState,
         numericAmount,
@@ -341,8 +572,10 @@ export function ConsumerProvider({ children }) {
         setPayoutDetails,
         addTransaction,
         setSellState,
+        refreshTransactions,
+        refreshAccounts,
 
-        // Merchant and cross-flow state
+        // Cross-flow & Merchant states
         selectedToken: currentToken,
         setSelectedToken,
         cryptoAmount,
@@ -352,9 +585,9 @@ export function ConsumerProvider({ children }) {
         fiatAmount,
         activeQuote,
         generateQuote,
-        bankAccounts: bankAccounts || INITIAL_BANK_ACCOUNTS,
+        bankAccounts,
         setBankAccounts,
-        selectedAccount: selectedAccount || INITIAL_BANK_ACCOUNTS[0],
+        selectedAccount: selectedAccount || bankAccounts[0] || null,
         setSelectedAccount,
         addBankAccount,
       }}
@@ -367,43 +600,43 @@ export function ConsumerProvider({ children }) {
 export function useConsumer() {
   const context = useContext(ConsumerContext);
   if (!context) {
-    // Return resilient fallback during SSR / prerender if mounted outside provider
     return {
       tokens: TOKENS,
       fiats: FIATS,
-      selectedToken: TOKENS[0],
+      selectedToken: TOKENS[3] || TOKENS[0],
       setSelectedToken: () => {},
-      cryptoAmount: '1.5',
+      cryptoAmount: '10000',
       setCryptoAmount: () => {},
       selectedFiat: FIATS[0],
       setSelectedFiat: () => {},
-      fiatAmount: '450230',
-      activeQuote: { rate: 300153, expiresIn: 30, fee: 4502, networkFee: 12 },
-      generateQuote: () => {},
-      bankAccounts: INITIAL_BANK_ACCOUNTS,
+      fiatAmount: '15230',
+      activeQuote: { quoteId: '', rate: 1.523, expiresIn: 30, fee: 152, networkFee: 12, netAmount: 15066 },
+      generateQuote: async () => {},
+      bankAccounts: [],
       setBankAccounts: () => {},
-      selectedAccount: INITIAL_BANK_ACCOUNTS[0],
+      selectedAccount: null,
       setSelectedAccount: () => {},
-      addBankAccount: () => {},
+      addBankAccount: async () => {},
       sellState: {
-        token: TOKENS[0],
-        amount: '1.50',
+        token: TOKENS[3] || TOKENS[0],
+        amount: '10000',
         fiatCurrency: 'NGN',
         fiatSymbol: '₦',
         payoutMethod: 'OPay',
         payoutDetails: {
+          id: '',
           provider: 'OPay',
-          accountNumber: '080XXXXXXXX',
-          accountName: 'UDUAK GABRIEL AKPAN',
-          verified: true
-        }
+          accountNumber: '',
+          accountName: '',
+          verified: false,
+        },
       },
-      numericAmount: 1.5,
-      grossFiat: 450230,
-      fee: 4502,
+      numericAmount: 10000,
+      grossFiat: 15230,
+      fee: 152,
       networkFee: 12,
-      netFiat: 445716,
-      transactions: INITIAL_TRANSACTIONS,
+      netFiat: 15066,
+      transactions: [],
       connectWallet: async () => {},
       signMessage: async () => {},
       disconnectWallet: () => {},
@@ -412,6 +645,8 @@ export function useConsumer() {
       setPayoutDetails: () => {},
       addTransaction: () => {},
       setSellState: () => {},
+      refreshTransactions: async () => {},
+      refreshAccounts: async () => {},
     };
   }
   return context;

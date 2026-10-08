@@ -64,18 +64,28 @@ export default function ConnectWallet() {
   const handleSelectWallet = async (name) => {
     setSelectedWalletName(name);
     setConnectStep('connecting');
-    await connectWallet(name);
-    setConnectStep('connected_need_sign');
+    try {
+      await connectWallet(name);
+      setConnectStep('connected_need_sign');
+    } catch (err) {
+      setConnectStep('initial');
+      toast.error(err?.message || 'Connection failed');
+    }
   };
 
   const handleSign = async () => {
     setConnectStep('signing');
-    await signMessage();
-    setConnectStep('authenticated');
-    toast.success('Wallet connected: 7xK...9Pq');
-    setTimeout(() => {
-      router.push('/sell/home');
-    }, 700);
+    try {
+      await signMessage();
+      setConnectStep('authenticated');
+      toast.success(`Wallet connected: ${wallet.displayAddress || 'Verified'}`);
+      setTimeout(() => {
+        router.push('/sell/home');
+      }, 700);
+    } catch (err) {
+      setConnectStep('connected_need_sign');
+      toast.error(err?.message || 'Authentication failed');
+    }
   };
 
   return (

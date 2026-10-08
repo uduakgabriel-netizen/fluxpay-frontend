@@ -44,20 +44,22 @@ export default function SettlementPreferencePage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    setSettlementType(localType);
-    setCurrency(localCurrency);
-
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      setSettlementType(localType);
+      setCurrency(localCurrency);
       toast.success('Settlement preference saved successfully!');
-    }, 600);
+    } catch {
+      toast.error('Failed to save settlement preference');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleAddNewAccount = (newAcc) => {
-    const created = addPayoutAccount(newAcc);
-    setSelectedAccountId(created.id);
+  const handleAddNewAccount = async (newAcc) => {
+    const created = await addPayoutAccount(newAcc);
+    if (created?.id) setSelectedAccountId(created.id);
   };
 
   return (

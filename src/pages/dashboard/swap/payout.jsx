@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,8 +17,9 @@ import {
   AlertCircle
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
-import { useConsumer, INITIAL_BANK_ACCOUNTS } from '@/contexts/ConsumerContext';
+import { useConsumer } from '@/contexts/ConsumerContext';
 import { NIGERIAN_BANKS, resolveAccountName } from '@/utils/nigerianBanks';
+import { payoutApi } from '@/services/api/payoutApi';
 import PageTransition from '@/components/shared/PageTransition';
 import EmptyState from '@/components/shared/EmptyState';
 import { useToast } from '@/components/shared/Toast';
@@ -32,9 +33,10 @@ export default function MerchantSwapPayoutPage() {
     addBankAccount,
   } = useConsumer();
 
-  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : (INITIAL_BANK_ACCOUNTS || []);
+  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : [];
 
   const [activeTab, setActiveTab] = useState('saved'); // 'saved' or 'new'
+  const [banksList, setBanksList] = useState(NIGERIAN_BANKS);
   const [selectedBank, setSelectedBank] = useState(NIGERIAN_BANKS[0]); // default OPay
   const [bankSearch, setBankSearch] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
@@ -44,6 +46,32 @@ export default function MerchantSwapPayoutPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [saveForFuture, setSaveForFuture] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    payoutApi
+      .listBanks('NGN')
+      .then((res) => {
+        if (!mounted) return;
+        if (res && Array.isArray(res.banks) && res.banks.length > 0) {
+          const mapped = res.banks.map((b) => ({
+            id: b.code,
+            code: b.code,
+            name: b.name,
+            category: b.name.toLowerCase().includes('opay') || b.name.toLowerCase().includes('palm') || b.name.toLowerCase().includes('kuda') ? 'Fintech / Digital' : 'Commercial Bank',
+            popular: true,
+          }));
+          setBanksList(mapped);
+          if (mapped[0]) setSelectedBank(mapped[0]);
+        }
+      })
+      .catch((err) => {
+        console.warn('[MerchantSwapPayoutPage] Failed to fetch bank list:', err);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Auto-select first account if none selected
   const activeSavedAccount = selectedAccount || accounts[0] || {
@@ -116,7 +144,7 @@ export default function MerchantSwapPayoutPage() {
   };
 
   // Filter banks for modal
-  const filteredBanks = NIGERIAN_BANKS.filter((b) => {
+  const filteredBanks = banksList.filter((b) => {
     const matchesSearch = b.name.toLowerCase().includes(bankSearch.toLowerCase()) ||
                           b.code.includes(bankSearch);
     if (!matchesSearch) return false;

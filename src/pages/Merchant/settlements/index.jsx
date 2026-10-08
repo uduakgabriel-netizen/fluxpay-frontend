@@ -13,15 +13,14 @@ import { useMerchantSettlement } from '@/contexts/MerchantSettlementContext';
 const TABS = ['All', 'Pending', 'Completed', 'Failed'];
 
 export default function SettlementsDashboardPage() {
-  const { settlements, summary } = useMerchantSettlement();
+  const { settlements, summary, refreshSettlements } = useMerchantSettlement();
   const [activeTab, setActiveTab] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 350);
-    return () => clearTimeout(timer);
-  }, []);
+    refreshSettlements?.().finally(() => setLoading(false));
+  }, [refreshSettlements]);
 
   const filteredSettlements = useMemo(() => {
     return settlements.filter((s) => {

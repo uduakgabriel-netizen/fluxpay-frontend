@@ -6,7 +6,7 @@ import { CheckCircle2, Copy, Check, ExternalLink, ArrowRight, ShieldCheck } from
 import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
 import { useToast } from '@/components/shared/Toast';
-import { useConsumer, TOKENS, FIATS, INITIAL_BANK_ACCOUNTS } from '@/contexts/ConsumerContext';
+import { useConsumer, TOKENS, FIATS } from '@/contexts/ConsumerContext';
 
 export default function MerchantSwapSuccessPage() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function MerchantSwapSuccessPage() {
 
   const tokenList = TOKENS || [];
   const fiatList = FIATS || [];
-  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : (INITIAL_BANK_ACCOUNTS || []);
+  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : [];
 
   const token = selectedToken || tokenList[0] || {
     symbol: 'SOL',

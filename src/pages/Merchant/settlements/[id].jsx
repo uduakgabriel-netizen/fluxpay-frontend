@@ -32,17 +32,94 @@ export default function SettlementDetailPage() {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [apiSettlement, setApiSettlement] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (!id || typeof id !== 'string') return;
+    import('@/services/api/merchantSettlementsApi').then(({ merchantSettlementsApi }) => {
+      merchantSettlementsApi.getById(id).then((s) => {
+        if (!s) return;
+        const sym = s.currency === 'USD' ? '$' : s.currency === 'EUR' ? '€' : '₦';
+        const statusFormatted =
+          s.status === 'COMPLETED'
+            ? 'Completed'
+            : s.status === 'FAILED'
+            ? 'Failed'
+            : s.status === 'PROCESSING'
+            ? 'Processing'
+            : 'Pending';
+        const bankName = s.bankAccount?.bankName || 'Bank Account';
+        const accNum = s.bankAccount?.accountNumber || '';
+        const accHolder = s.bankAccount?.accountName || 'FluxPay Merchant';
+        const createdDate = s.createdAt
+          ? new Date(s.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          : 'Recent';
+        const settledDate = s.settledAt
+          ? new Date(s.settledAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+          : createdDate;
+        setApiSettlement({
+          id: s.id,
+          date: createdDate,
+          fiatAmount: `${sym}${Number(s.grossAmount || s.fiatAmount || 0).toLocaleString()}`,
+          fiatCurrency: s.currency || 'NGN',
+          cryptoReceived: `${s.paymentCount || 1} payment(s)`,
+          rate: `1 SOL ≈ ${sym}${Number(s.fxRate || 300153).toLocaleString()}`,
+          provider: s.provider || 'Breet',
+          destinationAccount: `${bankName} · ${accNum}`,
+          recipientName: accHolder,
+          status: statusFormatted,
+          fluxPayFee: `${sym}${Number(s.fee || 0).toLocaleString()}`,
+          networkFee: `${sym}12`,
+          netToBank: `${sym}${Number(s.netAmount || 0).toLocaleString()}`,
+          reference: s.providerRefId || s.id,
+          settledDate,
+          includedPayments: Array.isArray(s.payments)
+            ? s.payments.map((p, idx) => ({
+                id: p.id || `ORD-${idx + 1}`,
+                cryptoAmount: `${p.amount || '0'} SOL`,
+                fiatAmount: `${sym}${Number(p.fiatAmount || p.amount || 0).toLocaleString()}`,
+                customer: p.customerWallet ? `${p.customerWallet.slice(0, 4)}...${p.customerWallet.slice(-4)}` : 'Customer',
+                date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Recent',
+              }))
+            : [],
+        });
+      }).catch((err) => {
+        console.warn('Could not fetch settlement from API:', err);
+      });
+    });
+  }, [id]);
+
+  const fallbackSettlement = {
+    id: typeof id === 'string' ? id : 'SET-DETAILS',
+    date: 'Recent',
+    fiatAmount: '₦0',
+    fiatCurrency: 'NGN',
+    cryptoReceived: '0 payment(s)',
+    rate: '1 SOL ≈ ₦300,153',
+    provider: 'Breet',
+    destinationAccount: 'Bank Account',
+    recipientName: 'FluxPay Merchant',
+    status: 'Pending',
+    fluxPayFee: '₦0',
+    networkFee: '₦12',
+    netToBank: '₦0',
+    reference: typeof id === 'string' ? id : 'BR-REF',
+    settledDate: 'Recent',
+    includedPayments: [],
+  };
+
   // Retrieve settlement or fallback to first one if ID is still resolving during SSR/hydration
   const settlement =
+    apiSettlement ||
     getSettlement(id) ||
     settlements.find((s) => s.id === id) ||
-    settlements[0];
+    settlements[0] ||
+    fallbackSettlement;
 
   const handleCopyRef = () => {
     if (settlement?.reference) {
@@ -54,6 +131,7 @@ export default function SettlementDetailPage() {
   };
 
   const handleDownloadReceipt = () => {
+    if (!settlement) return;
     setDownloading(true);
     setTimeout(() => {
       setDownloading(false);
@@ -90,7 +168,7 @@ export default function SettlementDetailPage() {
   }
 
   return (
-    <DashboardLayout pageTitle={`Settlement ${settlement.id}`}>
+    <DashboardLayout pageTitle={`Settlement ${settlement?.id || ''}`}>
       <PageTransition className="space-y-6 max-w-3xl">
         {/* Navigation & Header */}
         <div className="flex items-center justify-between gap-4">

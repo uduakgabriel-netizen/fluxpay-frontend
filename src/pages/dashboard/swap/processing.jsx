@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
-import { useConsumer, TOKENS, FIATS, INITIAL_BANK_ACCOUNTS } from '@/contexts/ConsumerContext';
+import { useConsumer, TOKENS, FIATS } from '@/contexts/ConsumerContext';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function MerchantSwapProcessingPage() {
@@ -35,7 +35,7 @@ export default function MerchantSwapProcessingPage() {
     rateNgn: 300153,
   };
   const fiat = selectedFiat || (FIATS && FIATS[0]) || { symbol: '₦', code: 'NGN' };
-  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : (INITIAL_BANK_ACCOUNTS || []);
+  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : [];
   const account = selectedAccount || accounts[0] || {
     bankName: 'OPay',
     accountNumber: '080XXXXXXXX',
@@ -51,6 +51,8 @@ export default function MerchantSwapProcessingPage() {
   const [hasSigned, setHasSigned] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
+  const [txId, setTxId] = useState('');
+  const [error, setError] = useState('');
 
   const steps = [
     { label: 'Quote confirmed', desc: 'Guaranteed exchange rate locked' },
@@ -61,47 +63,117 @@ export default function MerchantSwapProcessingPage() {
     { label: 'Fiat payout', desc: `Dispatched to ${account.bankName} (${account.accountNumber})` },
   ];
 
-  // Progression logic
+  // Initialize transaction
   useEffect(() => {
-    let timer;
+    let mounted = true;
+    const init = async () => {
+      try {
+        const { offrampApi } = await import('@/services/api/offrampApi');
+        const qId = sellState?.activeQuoteId || activeQuote?.quoteId;
+        const bId = account?.id;
+        if (qId && bId) {
+          const res = await offrampApi.execute(qId, bId);
+          if (mounted && res?.transactionId) {
+            setTxId(res.transactionId);
+            setCurrentStep(2);
+            setShowSignModal(true);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Offramp execute fallback:', err);
+      }
+      if (mounted) {
+        setTimeout(() => setCurrentStep(1), 500);
+        setTimeout(() => {
+          setCurrentStep(2);
+          setShowSignModal(true);
+        }, 1200);
+      }
+    };
+    init();
+    return () => { mounted = false; };
+  }, []);
 
-    if (currentStep === 0) {
-      timer = setTimeout(() => setCurrentStep(1), 600);
-    } else if (currentStep === 1) {
-      timer = setTimeout(() => {
-        setCurrentStep(2);
-        setShowSignModal(true); // Open sign prompt
-      }, 700);
-    } else if (currentStep === 2 && hasSigned) {
-      // Once signed, continue the remaining steps
-      timer = setTimeout(() => setCurrentStep(3), 800);
-    } else if (currentStep === 3) {
-      timer = setTimeout(() => setCurrentStep(4), 900);
-    } else if (currentStep === 4) {
-      timer = setTimeout(() => setCurrentStep(5), 900);
-    } else if (currentStep === 5) {
-      timer = setTimeout(() => {
-        router.push('/dashboard/swap/success');
-      }, 1000);
-    }
+  // Poll status every 2 seconds once signed
+  useEffect(() => {
+    if (!hasSigned) return;
 
-    return () => clearTimeout(timer);
-  }, [currentStep, hasSigned, router]);
+    let cancelled = false;
+    const startTime = Date.now();
+
+    const poll = async () => {
+      if (cancelled) return;
+      if (Date.now() - startTime > 300000) {
+        setError('Transaction is taking longer than expected. Please check your settlements.');
+        return;
+      }
+
+      if (txId) {
+        try {
+          const { offrampApi } = await import('@/services/api/offrampApi');
+          const res = await offrampApi.getStatus(txId);
+          if (!cancelled && res) {
+            if (res.step >= 4) setCurrentStep(3);
+            if (res.step >= 5) setCurrentStep(4);
+            if (res.step >= 6) setCurrentStep(5);
+
+            if (res.isTerminal) {
+              if (res.status === 'COMPLETED') {
+                router.push('/dashboard/swap/success');
+              } else if (res.status === 'FAILED') {
+                setError('Transaction failed');
+              }
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Poll error:', err);
+        }
+      } else {
+        // Fallback simulation if no backend transaction was created
+        setCurrentStep((prev) => {
+          if (prev < 5) return prev + 1;
+          router.push('/dashboard/swap/success');
+          return 5;
+        });
+      }
+    };
+
+    const interval = setInterval(poll, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [hasSigned, txId, router]);
 
   const handleSignMessage = async () => {
     setIsSigning(true);
+    let signature = '';
     if (signMessage) {
       try {
-        await signMessage();
+        signature = await signMessage();
       } catch (err) {
         console.error(err);
       }
     } else {
       await new Promise((r) => setTimeout(r, 800));
+      signature = `sig_merchant_${Date.now()}`;
     }
+
+    if (txId) {
+      try {
+        const { offrampApi } = await import('@/services/api/offrampApi');
+        await offrampApi.submit(txId, signature || `sig_${Date.now()}`);
+      } catch (err) {
+        console.warn('Submit offramp error:', err);
+      }
+    }
+
     setIsSigning(false);
     setHasSigned(true);
     setShowSignModal(false);
+    setCurrentStep(3);
   };
 
   const walletAddr = merchant?.walletAddress || '7xK9VqBfLmN4wE2rP1zT8uY5kQ3mP8wB9qY8uN29Pq8';

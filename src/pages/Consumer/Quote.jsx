@@ -12,12 +12,18 @@ import { useToast } from '@/components/shared/Toast';
 
 export default function Quote() {
   const router = useRouter();
-  const { sellState, numericAmount, fee, netFiat } = useConsumer();
+  const { sellState, numericAmount, fee, netFiat, generateQuote, activeQuote } = useConsumer();
   const toast = useToast();
 
   const [timeLeft, setTimeLeft] = useState(30);
   const [isExpired, setIsExpired] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useEffect(() => {
+    generateQuote?.().catch((err) => {
+      console.warn('Quote fetch failed:', err);
+    });
+  }, []);
 
   useEffect(() => {
     if (timeLeft <= 0) {
@@ -42,14 +48,18 @@ export default function Quote() {
     return () => clearInterval(timer);
   }, [timeLeft, isExpired, toast]);
 
-  const handleRefreshQuote = () => {
+  const handleRefreshQuote = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
+    try {
+      await generateQuote?.();
       setTimeLeft(30);
       setIsExpired(false);
-      setIsRefreshing(false);
       toast.info('New rate guaranteed for 30s');
-    }, 600);
+    } catch (err) {
+      toast.error(err?.message || 'Failed to refresh quote');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleContinue = () => {

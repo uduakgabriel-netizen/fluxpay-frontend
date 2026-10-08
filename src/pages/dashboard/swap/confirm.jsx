@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ShieldCheck, ArrowRight, Wallet, Building2, CheckCircle2, FileSignature } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
-import { useConsumer, TOKENS, FIATS, INITIAL_BANK_ACCOUNTS } from '@/contexts/ConsumerContext';
+import { useConsumer, TOKENS, FIATS } from '@/contexts/ConsumerContext';
 
 export default function MerchantSwapConfirmPage() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function MerchantSwapConfirmPage() {
 
   const tokenList = TOKENS || [];
   const fiatList = FIATS || [];
-  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : (INITIAL_BANK_ACCOUNTS || []);
+  const accounts = (bankAccounts && bankAccounts.length > 0) ? bankAccounts : [];
 
   const token = selectedToken || tokenList[0] || {
     symbol: 'SOL',

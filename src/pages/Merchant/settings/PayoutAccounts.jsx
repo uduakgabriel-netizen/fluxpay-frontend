@@ -40,24 +40,36 @@ export default function PayoutAccountsPage() {
     setIsModalOpen(true);
   };
 
-  const handleSaveAccount = (accountData) => {
-    if (editingAccount) {
-      updatePayoutAccount(editingAccount.id, accountData);
-      toast.success('Payout account updated');
-    } else {
-      addPayoutAccount(accountData);
-      toast.success('New payout account added');
+  const handleSaveAccount = async (accountData) => {
+    try {
+      if (editingAccount) {
+        await updatePayoutAccount(editingAccount.id, accountData);
+        toast.success('Payout account updated');
+      } else {
+        await addPayoutAccount(accountData);
+        toast.success('New payout account added');
+      }
+    } catch {
+      toast.error('Failed to save account');
     }
   };
 
-  const handleRemove = (id) => {
-    removePayoutAccount(id);
-    toast.info('Account removed');
+  const handleRemove = async (id) => {
+    try {
+      await removePayoutAccount(id);
+      toast.info('Account removed');
+    } catch {
+      toast.error('Failed to remove account');
+    }
   };
 
-  const handleSetDefault = (id) => {
-    setDefaultPayoutAccount(id);
-    toast.success('Default payout account updated');
+  const handleSetDefault = async (id) => {
+    try {
+      await setDefaultPayoutAccount(id);
+      toast.success('Default payout account updated');
+    } catch {
+      toast.error('Failed to update default account');
+    }
   };
 
   return (

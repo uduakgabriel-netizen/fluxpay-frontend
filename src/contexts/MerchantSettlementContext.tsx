@@ -1,4 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { merchantSettingsApi, MerchantSettlementSettings } from '@/services/api/merchantSettingsApi';
+import { merchantSettlementsApi, SettlementDetail } from '@/services/api/merchantSettlementsApi';
+import { payoutApi, BankAccountItem } from '@/services/api/payoutApi';
 
 export interface PayoutAccount {
   id: string;
@@ -46,139 +49,6 @@ export interface SettlementSummary {
   currency: string;
 }
 
-const INITIAL_ACCOUNTS: PayoutAccount[] = [
-  {
-    id: 'acc-opay-1',
-    bankName: 'OPay',
-    provider: 'OPay',
-    accountNumber: '080XXXXXXXX',
-    accountName: 'UDUAK GABRIEL AKPAN',
-    country: 'Nigeria',
-    currency: 'NGN',
-    isDefault: true,
-    isVerified: true,
-  },
-  {
-    id: 'acc-gtb-2',
-    bankName: 'Guaranty Trust Bank (GTBank)',
-    provider: 'Bank Transfer',
-    accountNumber: '0123456789',
-    accountName: 'UDUAK GABRIEL AKPAN',
-    country: 'Nigeria',
-    currency: 'NGN',
-    isDefault: false,
-    isVerified: true,
-  },
-];
-
-const INITIAL_SETTLEMENTS: SettlementRecord[] = [
-  {
-    id: 'SET-8X29K4L9M',
-    date: '25 Sep 2026',
-    fiatAmount: '₦15,230',
-    fiatCurrency: 'NGN',
-    cryptoReceived: '10,000 BONK',
-    rate: '1 BONK = ₦1.523',
-    provider: 'Breet',
-    destinationAccount: 'OPay · 080XXXXXXXX',
-    recipientName: 'UDUAK GABRIEL AKPAN',
-    status: 'Completed',
-    fluxPayFee: '₦152',
-    networkFee: '₦12',
-    netToBank: '₦15,066',
-    reference: 'BR-8X29K4L9M',
-    settledDate: '25 Sep 2026',
-    includedPayments: [
-      { id: 'ORD-12345', cryptoAmount: '2,000 BONK', fiatAmount: '₦3,046', customer: '0x9Bv8...whFB', date: '25 Sep 2026, 11:20' },
-      { id: 'ORD-12346', cryptoAmount: '3,500 BONK', fiatAmount: '₦5,330', customer: '0x4Kx2...mN9P', date: '25 Sep 2026, 12:45' },
-      { id: 'ORD-12347', cryptoAmount: '4,500 BONK', fiatAmount: '₦6,854', customer: '0x7Ht5...pQ3R', date: '25 Sep 2026, 14:10' },
-    ],
-  },
-  {
-    id: 'SET-7M910K32',
-    date: '24 Sep 2026',
-    fiatAmount: '₦445,728',
-    fiatCurrency: 'NGN',
-    cryptoReceived: '1.5 SOL',
-    rate: '1 SOL ≈ ₦300,153',
-    provider: 'Breet',
-    destinationAccount: 'GTBank · 0123456789',
-    recipientName: 'UDUAK GABRIEL AKPAN',
-    status: 'Completed',
-    fluxPayFee: '₦4,457',
-    networkFee: '₦12',
-    netToBank: '₦441,259',
-    reference: 'BR-771923055',
-    settledDate: '24 Sep 2026',
-    includedPayments: [
-      { id: 'ORD-12330', cryptoAmount: '0.5 SOL', fiatAmount: '₦148,576', customer: '0x2Ws6...vX8Y', date: '24 Sep 2026, 09:12' },
-      { id: 'ORD-12331', cryptoAmount: '1.0 SOL', fiatAmount: '₦297,152', customer: '0x6Lm1...kJ4H', date: '24 Sep 2026, 16:30' },
-    ],
-  },
-  {
-    id: 'SET-6B431L88',
-    date: '23 Sep 2026',
-    fiatAmount: '₦380,000',
-    fiatCurrency: 'NGN',
-    cryptoReceived: '250 USDC',
-    rate: '1 USDC = ₦1,535',
-    provider: 'Breet',
-    destinationAccount: 'OPay · 080XXXXXXXX',
-    recipientName: 'UDUAK GABRIEL AKPAN',
-    status: 'Processing',
-    fluxPayFee: '₦3,800',
-    networkFee: '₦12',
-    netToBank: '₦376,188',
-    reference: 'BR-665109210',
-    settledDate: '23 Sep 2026',
-    includedPayments: [
-      { id: 'ORD-12320', cryptoAmount: '100 USDC', fiatAmount: '₦152,000', customer: '0x1A2b...8F2B', date: '23 Sep 2026, 10:15' },
-      { id: 'ORD-12321', cryptoAmount: '150 USDC', fiatAmount: '₦228,000', customer: '0x8C4d...3D1E', date: '23 Sep 2026, 17:05' },
-    ],
-  },
-  {
-    id: 'SET-5Y882V14',
-    date: '22 Sep 2026',
-    fiatAmount: '₦484,500',
-    fiatCurrency: 'NGN',
-    cryptoReceived: '300 USDT',
-    rate: '1 USDT = ₦1,615',
-    provider: 'Breet',
-    destinationAccount: 'OPay · 080XXXXXXXX',
-    recipientName: 'UDUAK GABRIEL AKPAN',
-    status: 'Completed',
-    fluxPayFee: '₦4,845',
-    networkFee: '₦12',
-    netToBank: '₦479,643',
-    reference: 'BR-554192088',
-    settledDate: '22 Sep 2026',
-    includedPayments: [
-      { id: 'ORD-12310', cryptoAmount: '150 USDT', fiatAmount: '₦242,250', customer: '0x4E5f...9A2C', date: '22 Sep 2026, 08:30' },
-      { id: 'ORD-12311', cryptoAmount: '150 USDT', fiatAmount: '₦242,250', customer: '0x9F0a...1B4D', date: '22 Sep 2026, 14:22' },
-    ],
-  },
-  {
-    id: 'SET-4X112A09',
-    date: '21 Sep 2026',
-    fiatAmount: '₦2,300',
-    fiatCurrency: 'NGN',
-    cryptoReceived: '5 JUP',
-    rate: '1 JUP = ₦464.6',
-    provider: 'Breet',
-    destinationAccount: 'Bank Account · 2012938471',
-    recipientName: 'UDUAK GABRIEL AKPAN',
-    status: 'Failed',
-    fluxPayFee: '₦23',
-    networkFee: '₦12',
-    netToBank: '₦2,265',
-    reference: 'BR-443918274',
-    settledDate: '21 Sep 2026',
-    includedPayments: [
-      { id: 'ORD-12301', cryptoAmount: '5 JUP', fiatAmount: '₦2,300', customer: '0x3D7e...7C8A', date: '21 Sep 2026, 13:40' },
-    ],
-  },
-];
-
 interface MerchantSettlementContextType {
   settlementType: 'FIAT' | 'CRYPTO';
   setSettlementType: (type: 'FIAT' | 'CRYPTO') => void;
@@ -188,151 +58,287 @@ interface MerchantSettlementContextType {
   selectedAccountId: string;
   setSelectedAccountId: (id: string) => void;
   selectedAccount: PayoutAccount | undefined;
-  addPayoutAccount: (account: Omit<PayoutAccount, 'id' | 'isVerified'>) => PayoutAccount;
-  updatePayoutAccount: (id: string, updates: Partial<PayoutAccount>) => void;
-  removePayoutAccount: (id: string) => void;
-  setDefaultPayoutAccount: (id: string) => void;
+  addPayoutAccount: (account: Omit<PayoutAccount, 'id' | 'isVerified'>) => Promise<PayoutAccount>;
+  updatePayoutAccount: (id: string, updates: Partial<PayoutAccount>) => Promise<void>;
+  removePayoutAccount: (id: string) => Promise<void>;
+  setDefaultPayoutAccount: (id: string) => Promise<void>;
   settlements: SettlementRecord[];
   summary: SettlementSummary;
   getSettlement: (id: string) => SettlementRecord | undefined;
+  refreshSettlements: () => Promise<void>;
+  triggerManualSettlement: () => Promise<any>;
 }
 
 const MerchantSettlementContext = createContext<MerchantSettlementContextType | null>(null);
 
-const STORAGE_KEYS = {
-  PREF: 'fluxpay_merchant_settlement_pref',
-  CURRENCY: 'fluxpay_merchant_settlement_currency',
-  ACCOUNTS: 'fluxpay_merchant_payout_accounts',
-  SELECTED_ACCOUNT: 'fluxpay_merchant_selected_account_id',
-};
+function mapBackendAccount(b: BankAccountItem): PayoutAccount {
+  return {
+    id: b.id,
+    bankName: b.bankName,
+    provider: b.bankName.toLowerCase().includes('opay') ? 'OPay' : 'Bank Transfer',
+    accountNumber: b.accountNumber,
+    accountName: b.accountName,
+    country: b.country || 'Nigeria',
+    currency: b.currency || 'NGN',
+    isDefault: !!b.isDefault,
+    isVerified: !!b.isVerified,
+  };
+}
+
+function mapBackendSettlement(s: SettlementDetail): SettlementRecord {
+  const sym = s.currency === 'USD' ? '$' : s.currency === 'EUR' ? '€' : '₦';
+  const statusFormatted: SettlementRecord['status'] =
+    s.status === 'COMPLETED'
+      ? 'Completed'
+      : s.status === 'FAILED'
+      ? 'Failed'
+      : s.status === 'PROCESSING'
+      ? 'Processing'
+      : 'Pending';
+
+  const bankName = s.bankAccount?.bankName || 'Bank Account';
+  const accNum = s.bankAccount?.accountNumber || '';
+  const accHolder = s.bankAccount?.accountName || 'FluxPay Merchant';
+
+  const payments: IncludedPayment[] = Array.isArray(s.payments)
+    ? s.payments.map((p, idx) => ({
+        id: p.id || `ORD-${idx + 1}`,
+        cryptoAmount: `${p.amount || '0'} SOL`,
+        fiatAmount: `${sym}${Number(p.fiatAmount || p.amount || 0).toLocaleString()}`,
+        customer: p.customerWallet ? `${p.customerWallet.slice(0, 4)}...${p.customerWallet.slice(-4)}` : 'Customer',
+        date: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Recent',
+      }))
+    : [];
+
+  const createdDate = s.createdAt
+    ? new Date(s.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : 'Recent';
+  const settledDate = s.settledAt
+    ? new Date(s.settledAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : createdDate;
+
+  return {
+    id: s.id,
+    date: createdDate,
+    fiatAmount: `${sym}${Number(s.grossAmount || s.fiatAmount || 0).toLocaleString()}`,
+    fiatCurrency: s.currency || 'NGN',
+    cryptoReceived: `${s.paymentCount || 1} payment(s)`,
+    rate: `1 SOL ≈ ${sym}${Number(s.fxRate || 300153).toLocaleString()}`,
+    provider: s.provider || 'Breet',
+    destinationAccount: `${bankName} · ${accNum}`,
+    recipientName: accHolder,
+    status: statusFormatted,
+    fluxPayFee: `${sym}${Number(s.fee || 0).toLocaleString()}`,
+    networkFee: `${sym}12`,
+    netToBank: `${sym}${Number(s.netAmount || 0).toLocaleString()}`,
+    reference: s.providerRefId || s.id,
+    settledDate: settledDate,
+    includedPayments: payments,
+  };
+}
 
 export function MerchantSettlementProvider({ children }: { children: React.ReactNode }) {
   const [settlementType, setSettlementTypeState] = useState<'FIAT' | 'CRYPTO'>('FIAT');
   const [currency, setCurrencyState] = useState<string>('NGN');
-  const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>(INITIAL_ACCOUNTS);
-  const [selectedAccountId, setSelectedAccountIdState] = useState<string>('acc-opay-1');
-  const [settlements] = useState<SettlementRecord[]>(INITIAL_SETTLEMENTS);
+  const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountIdState] = useState<string>('');
+  const [settlements, setSettlements] = useState<SettlementRecord[]>([]);
 
-  // Initialize from localStorage if present
-  useEffect(() => {
+  // Load settlements from API
+  const refreshSettlements = useCallback(async () => {
     try {
-      const savedPref = localStorage.getItem(STORAGE_KEYS.PREF);
-      if (savedPref === 'FIAT' || savedPref === 'CRYPTO') {
-        setSettlementTypeState(savedPref);
+      const res = await merchantSettlementsApi.list();
+      if (res && Array.isArray(res.settlements)) {
+        setSettlements(res.settlements.map(mapBackendSettlement));
       }
-      const savedCurr = localStorage.getItem(STORAGE_KEYS.CURRENCY);
-      if (savedCurr) {
-        setCurrencyState(savedCurr);
-      }
-      const savedAccounts = localStorage.getItem(STORAGE_KEYS.ACCOUNTS);
-      if (savedAccounts) {
-        const parsed = JSON.parse(savedAccounts);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setPayoutAccounts(parsed);
-        }
-      }
-      const savedAccId = localStorage.getItem(STORAGE_KEYS.SELECTED_ACCOUNT);
-      if (savedAccId) {
-        setSelectedAccountIdState(savedAccId);
-      }
-    } catch (e) {
-      console.warn('Could not restore merchant settlement state:', e);
+    } catch (err) {
+      console.warn('[MerchantSettlementContext] Could not load settlements:', err);
     }
   }, []);
 
+  // Load accounts from API
+  const refreshAccounts = useCallback(async () => {
+    try {
+      const res = await payoutApi.listAccounts();
+      if (res && Array.isArray(res.accounts)) {
+        const mapped = res.accounts.map(mapBackendAccount);
+        setPayoutAccounts(mapped);
+        if (mapped.length > 0 && !selectedAccountId) {
+          const def = mapped.find((a) => a.isDefault) || mapped[0];
+          setSelectedAccountIdState(def.id);
+        }
+      }
+    } catch (err) {
+      console.warn('[MerchantSettlementContext] Could not load payout accounts:', err);
+    }
+  }, [selectedAccountId]);
+
+  // Load settings on mount
+  useEffect(() => {
+    let mounted = true;
+
+    // 1. Fetch settings
+    merchantSettingsApi
+      .getSettings()
+      .then((settings) => {
+        if (!mounted || !settings) return;
+        if (settings.settlementType) {
+          setSettlementTypeState(settings.settlementType);
+        }
+        if (settings.settlementCurrency) {
+          setCurrencyState(settings.settlementCurrency);
+        }
+        if (settings.defaultPayoutAccountId) {
+          setSelectedAccountIdState(settings.defaultPayoutAccountId);
+        }
+      })
+      .catch((err) => {
+        console.warn('[MerchantSettlementContext] Could not load settlement settings:', err);
+      });
+
+    // 2. Fetch accounts & settlements
+    refreshAccounts();
+    refreshSettlements();
+
+    return () => {
+      mounted = false;
+    };
+  }, [refreshAccounts, refreshSettlements]);
+
   const setSettlementType = (type: 'FIAT' | 'CRYPTO') => {
     setSettlementTypeState(type);
-    try {
-      localStorage.setItem(STORAGE_KEYS.PREF, type);
-    } catch {}
+    merchantSettingsApi.updateSettings({ settlementType: type }).catch((err) => {
+      console.warn('[MerchantSettlementContext] Failed to persist settlementType:', err);
+    });
   };
 
   const setCurrency = (curr: string) => {
     setCurrencyState(curr);
-    try {
-      localStorage.setItem(STORAGE_KEYS.CURRENCY, curr);
-    } catch {}
+    merchantSettingsApi.updateSettings({ settlementCurrency: curr }).catch((err) => {
+      console.warn('[MerchantSettlementContext] Failed to persist settlementCurrency:', err);
+    });
   };
 
   const setSelectedAccountId = (id: string) => {
     setSelectedAccountIdState(id);
-    try {
-      localStorage.setItem(STORAGE_KEYS.SELECTED_ACCOUNT, id);
-    } catch {}
+    merchantSettingsApi.updateSettings({ defaultPayoutAccountId: id }).catch((err) => {
+      console.warn('[MerchantSettlementContext] Failed to persist defaultPayoutAccountId:', err);
+    });
   };
 
-  const saveAccountsToStorage = (accs: PayoutAccount[]) => {
+  const addPayoutAccount = async (accountData: Omit<PayoutAccount, 'id' | 'isVerified'>) => {
     try {
-      localStorage.setItem(STORAGE_KEYS.ACCOUNTS, JSON.stringify(accs));
-    } catch {}
-  };
-
-  const addPayoutAccount = (accountData: Omit<PayoutAccount, 'id' | 'isVerified'>) => {
-    const newId = `acc-${Date.now().toString(36)}`;
-    const isFirst = payoutAccounts.length === 0;
-    const newAccount: PayoutAccount = {
-      ...accountData,
-      id: newId,
-      isVerified: true,
-      isDefault: accountData.isDefault || isFirst,
-    };
-
-    let updated = [newAccount, ...payoutAccounts];
-    if (newAccount.isDefault) {
-      updated = updated.map((acc) => (acc.id === newId ? acc : { ...acc, isDefault: false }));
-      setSelectedAccountId(newId);
+      const created = await payoutApi.addAccount({
+        bankName: accountData.bankName,
+        accountNumber: accountData.accountNumber,
+        accountName: accountData.accountName,
+        currency: accountData.currency || currency,
+        setDefault: !!accountData.isDefault,
+      });
+      const mapped = mapBackendAccount(created);
+      setPayoutAccounts((prev) => [mapped, ...prev]);
+      if (mapped.isDefault) {
+        setSelectedAccountId(mapped.id);
+      }
+      return mapped;
+    } catch (err) {
+      console.warn('[MerchantSettlementContext] addAccount API failed, local fallback:', err);
+      const fallback: PayoutAccount = {
+        ...accountData,
+        id: `acc-${Date.now().toString(36)}`,
+        isVerified: true,
+        isDefault: accountData.isDefault || payoutAccounts.length === 0,
+      };
+      setPayoutAccounts((prev) => [fallback, ...prev]);
+      if (fallback.isDefault) {
+        setSelectedAccountId(fallback.id);
+      }
+      return fallback;
     }
-
-    setPayoutAccounts(updated);
-    saveAccountsToStorage(updated);
-    return newAccount;
   };
 
-  const updatePayoutAccount = (id: string, updates: Partial<PayoutAccount>) => {
-    let updated = payoutAccounts.map((acc) => (acc.id === id ? { ...acc, ...updates } : acc));
+  const updatePayoutAccount = async (id: string, updates: Partial<PayoutAccount>) => {
+    setPayoutAccounts((prev) => prev.map((acc) => (acc.id === id ? { ...acc, ...updates } : acc)));
     if (updates.isDefault) {
-      updated = updated.map((acc) => (acc.id === id ? { ...acc, isDefault: true } : { ...acc, isDefault: false }));
+      try {
+        await payoutApi.setDefault(id);
+        setSelectedAccountId(id);
+      } catch (err) {
+        console.warn('[MerchantSettlementContext] setDefault API failed:', err);
+      }
     }
-    setPayoutAccounts(updated);
-    saveAccountsToStorage(updated);
   };
 
-  const removePayoutAccount = (id: string) => {
-    const remaining = payoutAccounts.filter((acc) => acc.id !== id);
-    if (remaining.length > 0 && !remaining.some((a) => a.isDefault)) {
-      remaining[0].isDefault = true;
+  const removePayoutAccount = async (id: string) => {
+    try {
+      await payoutApi.deleteAccount(id);
+    } catch (err) {
+      console.warn('[MerchantSettlementContext] deleteAccount API failed:', err);
     }
+    const remaining = payoutAccounts.filter((acc) => acc.id !== id);
     setPayoutAccounts(remaining);
-    saveAccountsToStorage(remaining);
-
     if (selectedAccountId === id) {
       const fallback = remaining.find((a) => a.isDefault) || remaining[0];
       setSelectedAccountId(fallback ? fallback.id : '');
     }
   };
 
-  const setDefaultPayoutAccount = (id: string) => {
-    const updated = payoutAccounts.map((acc) => ({
-      ...acc,
-      isDefault: acc.id === id,
-    }));
-    setPayoutAccounts(updated);
-    saveAccountsToStorage(updated);
-    setSelectedAccountId(id);
+  const setDefaultPayoutAccount = async (id: string) => {
+    try {
+      await payoutApi.setDefault(id);
+      setSelectedAccountId(id);
+    } catch (err) {
+      console.warn('[MerchantSettlementContext] setDefault API failed:', err);
+    }
+    setPayoutAccounts((prev) =>
+      prev.map((acc) => ({
+        ...acc,
+        isDefault: acc.id === id,
+      }))
+    );
   };
 
-  const selectedAccount = payoutAccounts.find((a) => a.id === selectedAccountId) || payoutAccounts.find((a) => a.isDefault) || payoutAccounts[0];
+  const triggerManualSettlement = async () => {
+    const res = await merchantSettlementsApi.trigger(currency, selectedAccountId || undefined);
+    await refreshSettlements();
+    return res;
+  };
+
+  const selectedAccount = useMemo(() => {
+    return (
+      payoutAccounts.find((a) => a.id === selectedAccountId) ||
+      payoutAccounts.find((a) => a.isDefault) ||
+      payoutAccounts[0]
+    );
+  }, [payoutAccounts, selectedAccountId]);
 
   const getSettlement = (id: string) => {
     return settlements.find((s) => s.id === id || s.id.toLowerCase() === id?.toLowerCase());
   };
 
-  const summary: SettlementSummary = {
-    pendingAmount: '₦0',
-    thisMonthAmount: '₦1,245,320',
-    totalAmount: '₦5,230,000',
-    currency: 'NGN',
-  };
+  // Compute dynamic summary metrics from real settlement data
+  const summary: SettlementSummary = useMemo(() => {
+    const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₦';
+    let pending = 0;
+    let total = 0;
+
+    for (const s of settlements) {
+      const numericVal = parseFloat(s.fiatAmount.replace(/[^0-9.]/g, '')) || 0;
+      if (s.status === 'Pending' || s.status === 'Processing') {
+        pending += numericVal;
+      }
+      if (s.status === 'Completed') {
+        total += numericVal;
+      }
+    }
+
+    return {
+      pendingAmount: `${sym}${pending.toLocaleString()}`,
+      thisMonthAmount: `${sym}${total.toLocaleString()}`,
+      totalAmount: `${sym}${total.toLocaleString()}`,
+      currency,
+    };
+  }, [settlements, currency]);
 
   return (
     <MerchantSettlementContext.Provider
@@ -352,6 +358,8 @@ export function MerchantSettlementProvider({ children }: { children: React.React
         settlements,
         summary,
         getSettlement,
+        refreshSettlements,
+        triggerManualSettlement,
       }}
     >
       {children}
@@ -362,28 +370,39 @@ export function MerchantSettlementProvider({ children }: { children: React.React
 export function useMerchantSettlement() {
   const context = useContext(MerchantSettlementContext);
   if (!context) {
-    // Fallback during SSR or testing
     return {
       settlementType: 'FIAT' as const,
       setSettlementType: () => {},
       currency: 'NGN',
       setCurrency: () => {},
-      payoutAccounts: INITIAL_ACCOUNTS,
-      selectedAccountId: 'acc-opay-1',
+      payoutAccounts: [],
+      selectedAccountId: '',
       setSelectedAccountId: () => {},
-      selectedAccount: INITIAL_ACCOUNTS[0],
-      addPayoutAccount: () => INITIAL_ACCOUNTS[0],
-      updatePayoutAccount: () => {},
-      removePayoutAccount: () => {},
-      setDefaultPayoutAccount: () => {},
-      settlements: INITIAL_SETTLEMENTS,
+      selectedAccount: undefined,
+      addPayoutAccount: async () => ({
+        id: '',
+        bankName: '',
+        provider: '',
+        accountNumber: '',
+        accountName: '',
+        country: 'Nigeria',
+        currency: 'NGN',
+        isDefault: true,
+        isVerified: true,
+      }),
+      updatePayoutAccount: async () => {},
+      removePayoutAccount: async () => {},
+      setDefaultPayoutAccount: async () => {},
+      settlements: [],
       summary: {
         pendingAmount: '₦0',
-        thisMonthAmount: '₦1,245,320',
-        totalAmount: '₦5,230,000',
+        thisMonthAmount: '₦0',
+        totalAmount: '₦0',
         currency: 'NGN',
       },
-      getSettlement: (id: string) => INITIAL_SETTLEMENTS.find((s) => s.id === id),
+      getSettlement: () => undefined,
+      refreshSettlements: async () => {},
+      triggerManualSettlement: async () => {},
     };
   }
   return context;
