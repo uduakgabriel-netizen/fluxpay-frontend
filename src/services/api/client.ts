@@ -1,8 +1,17 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { getToken, clearAuth } from '@/utils/token';
 
-const rawBase = process.env.NEXT_PUBLIC_API_URL || 'https://fluxpay-backend-0ez8.onrender.com';
-const API_URL = rawBase.replace(/\/$/, '');
+const getBaseApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    return 'http://localhost:5000';
+  }
+  return 'https://fluxpay-backend-0ez8.onrender.com';
+};
+
+const API_URL = getBaseApiUrl();
 
 export class ApiError extends Error {
   code: string;
