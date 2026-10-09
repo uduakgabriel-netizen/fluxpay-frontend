@@ -435,7 +435,7 @@ export default function MerchantSwapPayoutPage() {
                 {/* Header Badge */}
                 <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-xs uppercase tracking-wider">
                   <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
-                  <span>ACCOUNT VERIFIED VIA ONELIQUIDITY</span>
+                  <span>ACCOUNT VERIFIED VIA MONNIFY</span>
                 </div>
 
                 {/* Account Details Box */}
