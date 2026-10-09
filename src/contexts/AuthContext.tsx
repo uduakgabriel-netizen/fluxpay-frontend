@@ -109,35 +109,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signature = btoa(String.fromCharCode.apply(null, Array.from(signatureBytes)))
 
     // 4. Verify with backend
-    try {
-      const result = await authApi.verifyWallet({
-        walletAddress,
-        message,
-        signature,
-      })
+    const result = await authApi.verifyWallet({
+      walletAddress,
+      message,
+      signature,
+    })
 
-      // 5. Store session
+    // 5. Store session
+    if (result?.sessionToken) {
       setToken(result.sessionToken)
       setMerchantState(result.merchant)
       setMerchant(result.merchant)
       setIsAuthenticated(true)
-    } catch (err) {
-      console.warn('[FluxPay] Remote verify failed. Using fallback local session:', err);
-      const fallbackMerchant = getMerchant() || {
-        id: 'merchant_' + walletAddress.slice(0, 8),
-        walletAddress,
-        email: '',
-        businessName: 'Solana Merchant',
-        preferredTokenSymbol: 'USDC',
-        hasSelectedToken: true,
-        emailVerified: true,
-        createdAt: new Date().toISOString()
-      };
-      const fallbackToken = 'fluxpay_session_' + Date.now();
-      setToken(fallbackToken);
-      setMerchantState(fallbackMerchant as any);
-      setMerchant(fallbackMerchant as any);
-      setIsAuthenticated(true);
+    } else {
+      throw new Error('Authentication failed: no session token returned')
     }
   }, [publicKey, signMessage])
 
@@ -157,41 +142,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const signatureBytes = await signMessage(encodedMessage)
     const signature = btoa(String.fromCharCode.apply(null, Array.from(signatureBytes)))
 
-    // 3. Signup with backend (with fallback if remote DB is down)
-    try {
-      const result = await authApi.signup({
-        walletAddress,
-        email,
-        businessName,
-        preferredTokenSymbol,
-        message,
-        signature,
-      })
+    // 3. Signup with backend
+    const result = await authApi.signup({
+      walletAddress,
+      email,
+      businessName,
+      preferredTokenSymbol,
+      message,
+      signature,
+    })
 
-      // 4. Store session
+    // 4. Store session
+    if (result?.sessionToken) {
       setToken(result.sessionToken)
       setMerchantState(result.merchant)
       setMerchant(result.merchant)
       setIsAuthenticated(true)
-    } catch (err) {
-      console.warn('[FluxPay] Remote signup failed. Initializing local session:', err);
-      const fallbackMerchant = {
-        id: 'merchant_' + walletAddress.slice(0, 8),
-        walletAddress,
-        email: email || '',
-        businessName: businessName || 'My Solana Business',
-        preferredTokenSymbol: preferredTokenSymbol || 'USDC',
-        preferredTokenMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-        preferredTokenDecimals: 6,
-        hasSelectedToken: true,
-        emailVerified: true,
-        createdAt: new Date().toISOString()
-      };
-      const fallbackToken = 'fluxpay_session_' + Date.now();
-      setToken(fallbackToken);
-      setMerchantState(fallbackMerchant as any);
-      setMerchant(fallbackMerchant as any);
-      setIsAuthenticated(true);
+    } else {
+      throw new Error('Signup failed: no session token returned')
     }
   }, [publicKey, signMessage])
 

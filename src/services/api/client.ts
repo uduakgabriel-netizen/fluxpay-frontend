@@ -124,15 +124,18 @@ apiClient.interceptors.response.use(
 
     // 401 handling — clear stale tokens and redirect if on protected page
     if (status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('fluxpay_consumer_token');
-      localStorage.removeItem('fluxpay_merchant_token');
-      localStorage.removeItem('sessionToken');
-      clearAuth();
+      const isAuthEndpoint = config?.url?.includes('/auth/verify') || config?.url?.includes('/auth/nonce') || config?.url?.includes('/auth/signup');
+      if (!isAuthEndpoint) {
+        localStorage.removeItem('fluxpay_consumer_token');
+        localStorage.removeItem('fluxpay_merchant_token');
+        localStorage.removeItem('sessionToken');
+        clearAuth();
 
-      const path = window.location.pathname;
-      const isPublic = ['/', '/login', '/sell', '/features', '/pricing', '/docs', '/contact'].includes(path);
-      if (!isPublic && (path.startsWith('/dashboard') || path.startsWith('/Merchant'))) {
-        window.location.href = '/login';
+        const path = window.location.pathname;
+        const isPublic = ['/', '/login', '/signup', '/sell', '/features', '/pricing', '/docs', '/contact'].includes(path);
+        if (!isPublic && (path.startsWith('/dashboard') || path.startsWith('/Merchant'))) {
+          window.location.href = '/login';
+        }
       }
     }
 

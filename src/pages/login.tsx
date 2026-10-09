@@ -1,5 +1,5 @@
 import type { NextPage } from 'next'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useWallet } from '@solana/wallet-adapter-react'
@@ -19,6 +19,7 @@ const Login: NextPage = () => {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const hasAutoAttempted = useRef(false)
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -27,12 +28,13 @@ const Login: NextPage = () => {
     }
   }, [isAuthenticated, authLoading, router])
 
-  // When wallet connects, attempt wallet login
+  // When wallet connects for the first time, attempt wallet login once
   useEffect(() => {
-    if (connected && !isAuthenticated && !loading && !authLoading) {
+    if (connected && !isAuthenticated && !loading && !authLoading && !hasAutoAttempted.current) {
+      hasAutoAttempted.current = true
       handleWalletLogin()
     }
-  }, [connected])
+  }, [connected, isAuthenticated, loading, authLoading])
 
   const handleWalletLogin = async () => {
     setLoading(true)
@@ -42,7 +44,6 @@ const Login: NextPage = () => {
       router.push('/dashboard')
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Login failed. Please try again.'
-      // If merchant doesn't exist, suggest signup
       if (message.includes('No nonce found') || err?.response?.status === 400) {
         setError('Please sign the message in your wallet to authenticate.')
       } else {
@@ -90,13 +91,26 @@ const Login: NextPage = () => {
                 <WalletMultiButton />
               </div>
 
-              {loading && (
-                <div className="text-center">
-                  <p className="text-[14px] text-gray-500 dark:text-slate-400 animate-pulse">
-                    <i className="ri-loader-4-line animate-spin mr-2"></i>
-                    Authenticating...
-                  </p>
-                </div>
+              {/* If wallet connected but not authenticated, show sign button */}
+              {connected && !isAuthenticated && (
+                <button
+                  type="button"
+                  onClick={handleWalletLogin}
+                  disabled={loading}
+                  className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#14B8A6] hover:opacity-95 text-white font-bold text-sm shadow-lg shadow-purple-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? (
+                    <>
+                      <i className="ri-loader-4-line animate-spin text-lg"></i>
+                      <span>Authenticating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-shield-keyhole-line text-lg"></i>
+                      <span>Sign Message to Enter Dashboard</span>
+                    </>
+                  )}
+                </button>
               )}
 
               {/* Divider */}
