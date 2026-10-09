@@ -51,6 +51,7 @@ export default function MerchantSwapPayoutPage() {
   const [userConfirmedName, setUserConfirmedName] = useState(false);
   const [verificationError, setVerificationError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
 
   // If hydrated and no active quote, redirect to step 1
   useEffect(() => {
@@ -438,11 +439,29 @@ export default function MerchantSwapPayoutPage() {
                 </div>
 
                 {/* Account Details Box */}
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 shadow-sm space-y-1">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Account Holder:</p>
-                  <p className="text-lg sm:text-xl font-black text-gray-900 dark:text-white font-mono tracking-wide">
-                    {accountName}
-                  </p>
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 shadow-sm space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Account Holder:</p>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingName(!isEditingName)}
+                      className="text-xs text-purple-600 dark:text-purple-400 font-bold hover:underline cursor-pointer"
+                    >
+                      {isEditingName ? 'Done' : 'Edit Name'}
+                    </button>
+                  </div>
+                  {isEditingName ? (
+                    <input
+                      type="text"
+                      value={accountName}
+                      onChange={(e) => setAccountName(e.target.value.toUpperCase())}
+                      className="w-full p-2.5 rounded-xl border border-purple-300 dark:border-purple-600 font-mono font-bold text-base bg-gray-50 dark:bg-slate-800 text-gray-900 dark:text-white uppercase focus:outline-none focus:border-purple-500"
+                    />
+                  ) : (
+                    <p className="text-lg sm:text-xl font-black text-gray-900 dark:text-white font-mono tracking-wide">
+                      {accountName}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
                     {selectedBank?.name} · {accountNumber}
                   </p>
