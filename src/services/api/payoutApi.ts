@@ -61,6 +61,13 @@ export const payoutApi = {
   },
 
   /**
+   * Alias for addAccount
+   */
+  async createAccount(account: AddBankAccountParams): Promise<BankAccountItem> {
+    return this.addAccount(account);
+  },
+
+  /**
    * Verify bank account name and number before saving
    */
   async verifyAccount(params: VerifyBankAccountParams): Promise<VerifiedAccountResult> {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -27,6 +27,7 @@ import { useToast } from '@/components/shared/Toast';
 export default function MerchantSwapPayoutPage() {
   const router = useRouter();
   const toast = useToast();
+  const accountInputRef = useRef(null);
   const {
     activeQuote,
     selectedAccount,
@@ -47,6 +48,7 @@ export default function MerchantSwapPayoutPage() {
   const [accountName, setAccountName] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
+  const [userConfirmedName, setUserConfirmedName] = useState(false);
   const [verificationError, setVerificationError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -123,65 +125,91 @@ export default function MerchantSwapPayoutPage() {
     }
   }, [accounts.length]);
 
-  // Real account verification on 10 digits
-  const handleAccountNumChange = async (val) => {
-    const clean = val.replace(/\D/g, '').slice(0, 10);
-    setAccountNumber(clean);
-    setIsVerified(false);
-    setAccountName('');
+  // Verification helper calling real OneLiquidity API
+  const verifyCurrentAccount = async (num, bank) => {
+    if (!num || num.length !== 10 || !bank?.code) return;
+    setIsVerifying(true);
     setVerificationError('');
+    setIsVerified(false);
+    setUserConfirmedName(false);
+    setAccountName('');
 
-    if (clean.length === 10 && selectedBank) {
-      setIsVerifying(true);
-      try {
-        const res = await payoutApi.verifyAccount({
-          accountNumber: clean,
-          bankCode: selectedBank.code,
-          currency: 'NGN',
-        });
-        if (res?.accountName) {
-          setAccountName(res.accountName);
-          setIsVerified(true);
-          toast.success(`Account verified: ${res.accountName}`);
-        } else {
-          setVerificationError('Could not verify account name. Please verify bank and number.');
-        }
-      } catch (err) {
-        console.error('[MerchantSwapPayout] Verification error:', err);
-        setVerificationError(err?.message || 'Verification failed. Please check account details.');
-      } finally {
-        setIsVerifying(false);
+    try {
+      const res = await payoutApi.verifyAccount({
+        accountNumber: num,
+        bankCode: bank.code,
+        currency: 'NGN',
+      });
+      if (res?.accountName) {
+        setAccountName(res.accountName);
+        setIsVerified(true);
+        toast.success(`Account verified: ${res.accountName}`);
+      } else {
+        setIsVerified(false);
+        setVerificationError("We couldn't verify this account. Check the number and try again.");
+        toast.error("We couldn't verify this account. Check the number and try again.");
       }
+    } catch (err) {
+      console.error('[MerchantSwapPayout] Verification error:', err);
+      setIsVerified(false);
+      setAccountName('');
+      const msg = err?.message || "We couldn't verify this account. Check the number and try again.";
+      setVerificationError(msg);
+      toast.error(msg);
+    } finally {
+      setIsVerifying(false);
     }
   };
 
+  // Change handler
+  const handleAccountNumChange = (val) => {
+    const clean = val.replace(/\D/g, '').slice(0, 10);
+    setAccountNumber(clean);
+    setIsVerified(false);
+    setUserConfirmedName(false);
+    setAccountName('');
+    setVerificationError('');
+  };
+
+  // Fix 1: Auto-Fetch on Blur
+  const handleAccountNumberBlur = async () => {
+    if (accountNumber.length !== 10 || !selectedBank) {
+      return;
+    }
+    await verifyCurrentAccount(accountNumber, selectedBank);
+  };
+
+  // Bank select handler
   const handleBankSelect = (bank) => {
     setSelectedBank(bank);
     setShowBankModal(false);
     setIsVerified(false);
+    setUserConfirmedName(false);
     setAccountName('');
     setVerificationError('');
     if (accountNumber.length === 10) {
-      setIsVerifying(true);
-      payoutApi
-        .verifyAccount({
-          accountNumber,
-          bankCode: bank.code,
-          currency: 'NGN',
-        })
-        .then((res) => {
-          if (res?.accountName) {
-            setAccountName(res.accountName);
-            setIsVerified(true);
-            toast.success(`Account verified: ${res.accountName}`);
-          }
-        })
-        .catch((err) => {
-          setVerificationError(err?.message || 'Verification failed');
-        })
-        .finally(() => setIsVerifying(false));
+      verifyCurrentAccount(accountNumber, bank);
     }
   };
+
+  // Auto-verify debounce after 500ms when 10 digits reached and bank is selected
+  useEffect(() => {
+    if (accountNumber.length === 10 && selectedBank?.code && !isVerified && !isVerifying) {
+      const timer = setTimeout(() => {
+        verifyCurrentAccount(accountNumber, selectedBank);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [accountNumber, selectedBank?.code]);
+
+  // Fix 3: canSave requirement
+  const canSave =
+    accountNumber.length === 10 &&
+    Boolean(selectedBank?.code) &&
+    Boolean(accountName) &&
+    userConfirmedName &&
+    isVerified &&
+    !isSaving;
 
   const handleContinue = () => {
     const acc = selectedAccount || (accounts.length > 0 ? accounts[0] : null);
@@ -195,23 +223,23 @@ export default function MerchantSwapPayoutPage() {
 
   const handleContinueWithSaved = handleContinue;
 
+  // Fix 4: Include ALL required fields on Save
   const handleContinueWithNew = async () => {
-    if (!isVerified || !accountName) {
-      toast.warning('Please enter a valid verified bank account');
-      return;
-    }
+    if (!canSave) return;
 
     setIsSaving(true);
     try {
-      const created = await payoutApi.addAccount({
-        bankName: selectedBank.name,
+      const newAccount = await payoutApi.createAccount({
         accountNumber,
-        accountName,
-        currency: fiatCurrency?.code || 'NGN',
+        bankCode: selectedBank.code,
+        bankName: selectedBank.name,
+        currency: 'NGN',
+        accountName, // ← Real name from OneLiquidity
         setDefault: true,
       });
-      setSelectedAccount(created);
-      toast.success('Payout account saved');
+
+      toast.success('Account saved');
+      setSelectedAccount(newAccount);
       router.push('/dashboard/swap/confirm');
     } catch (err) {
       console.error('[MerchantSwapPayout] Failed to save account:', err);
@@ -376,57 +404,115 @@ export default function MerchantSwapPayoutPage() {
               </label>
               <div className="relative">
                 <input
+                  ref={accountInputRef}
                   type="text"
                   inputMode="numeric"
                   maxLength={10}
                   placeholder="0123456789"
                   value={accountNumber}
                   onChange={(e) => handleAccountNumChange(e.target.value)}
+                  onBlur={handleAccountNumberBlur}
                   className="w-full p-4 pr-12 rounded-2xl bg-gray-50 dark:bg-[#1e1b4b]/40 border border-gray-200 dark:border-purple-500/20 text-gray-900 dark:text-white font-mono font-bold text-lg focus:outline-none focus:border-purple-500 transition-colors"
                 />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2">
                   {isVerifying ? (
                     <Loader2 size={20} className="animate-spin text-purple-600" />
-                  ) : isVerified ? (
+                  ) : (isVerified && accountName) ? (
                     <CheckCircle2 size={22} className="text-emerald-500" />
                   ) : null}
                 </div>
               </div>
             </div>
 
-            {/* Real Verification Feedback */}
+            {/* Fix 2: Display Real Account Name Prominently with Confirmation */}
             {isVerified && accountName && (
               <motion.div
-                initial={{ opacity: 0, y: 5 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-center gap-3"
+                className="p-5 rounded-3xl bg-emerald-50/80 dark:bg-emerald-950/30 border-2 border-emerald-500/40 dark:border-emerald-500/30 shadow-lg space-y-4"
               >
-                <CheckCircle2 size={20} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <div>
-                  <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
-                    Account Verified via OneLiquidity
-                  </p>
-                  <p className="text-sm font-black text-gray-900 dark:text-white font-mono mt-0.5">
+                {/* Header Badge */}
+                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                  <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                  <span>ACCOUNT VERIFIED VIA ONELIQUIDITY</span>
+                </div>
+
+                {/* Account Details Box */}
+                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 shadow-sm space-y-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Account Holder:</p>
+                  <p className="text-lg sm:text-xl font-black text-gray-900 dark:text-white font-mono tracking-wide">
                     {accountName}
                   </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                    {selectedBank?.name} · {accountNumber}
+                  </p>
                 </div>
+
+                {/* Confirmation Prompt */}
+                {!userConfirmedName ? (
+                  <div className="pt-1 space-y-3">
+                    <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                      Is this your correct account holder name?
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserConfirmedName(true);
+                          toast.success('Account name confirmed!');
+                        }}
+                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Check size={14} strokeWidth={3} />
+                        <span>Yes, continue</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserConfirmedName(false);
+                          setIsVerified(false);
+                          setAccountName('');
+                          accountInputRef.current?.focus();
+                        }}
+                        className="flex-1 py-3 px-4 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 font-semibold text-xs transition-all cursor-pointer"
+                      >
+                        No, edit account number
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between pt-1 text-xs">
+                    <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
+                      <Check size={16} strokeWidth={3} />
+                      <span>Name confirmed by you</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUserConfirmedName(false)}
+                      className="text-purple-600 dark:text-purple-400 hover:underline text-xs font-semibold cursor-pointer"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
               </motion.div>
             )}
 
+            {/* Verification Error */}
             {verificationError && (
-              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                <AlertCircle size={16} className="shrink-0" />
-                <span>{verificationError}</span>
+              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2.5">
+                <AlertCircle size={18} className="shrink-0 text-rose-600 dark:text-rose-400" />
+                <span className="font-medium">{verificationError}</span>
               </div>
             )}
 
-            {/* Continue CTA */}
+            {/* Continue CTA (Disabled until all conditions met) */}
             <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: canSave ? 1.01 : 1 }}
+              whileTap={{ scale: canSave ? 0.98 : 1 }}
               onClick={handleContinueWithNew}
-              disabled={!isVerified || isSaving}
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-4"
+              disabled={!canSave}
+              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed mt-4"
             >
               {isSaving ? (
                 <>
