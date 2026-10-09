@@ -6,6 +6,7 @@ import { payoutApi, BankAccountItem } from '@/services/api/payoutApi';
 export interface PayoutAccount {
   id: string;
   bankName: string;
+  bankCode?: string;
   provider: string;
   accountNumber: string;
   accountName: string;
@@ -75,6 +76,7 @@ function mapBackendAccount(b: BankAccountItem): PayoutAccount {
   return {
     id: b.id,
     bankName: b.bankName,
+    bankCode: b.bankCode,
     provider: b.bankName.toLowerCase().includes('opay') ? 'OPay' : 'Bank Transfer',
     accountNumber: b.accountNumber,
     accountName: b.accountName,
@@ -230,6 +232,7 @@ export function MerchantSettlementProvider({ children }: { children: React.React
     try {
       const created = await payoutApi.addAccount({
         bankName: accountData.bankName,
+        bankCode: accountData.bankCode || '999992',
         accountNumber: accountData.accountNumber,
         accountName: accountData.accountName,
         currency: accountData.currency || currency,

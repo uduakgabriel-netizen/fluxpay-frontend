@@ -116,9 +116,13 @@ export default function AddBankAccountModal({
       toast.success(`Account verified: ${res.accountName}`);
     } catch (err) {
       console.error('Account verification failed:', err);
-      const msg = err.response?.data?.message || err.message || 'Verification failed. Please check bank details.';
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        'Could not verify account. Check the number and try again.';
       setErrorMsg(msg);
-      toast.error('Verification failed. Please check bank and account number.');
+      toast.error(msg);
       setIsVerified(false);
       setAccountName('');
     } finally {
@@ -133,17 +137,20 @@ export default function AddBankAccountModal({
       return;
     }
 
+    const bankObj = banksList.find((b) => b.name === provider) || banksList[0];
+    const bankCode = bankObj?.code || '999992';
+
     onSave({
       bankName: provider,
+      bankCode,
       provider: provider.toLowerCase().includes('opay') ? 'OPay' : 'Bank Transfer',
       accountNumber,
       accountName,
       country,
-      currency,
-      isDefault: editingAccount ? editingAccount.isDefault : false,
+      currency: currency || 'NGN',
+      isDefault: editingAccount ? editingAccount.isDefault : true,
     });
 
-    toast.success(editingAccount ? 'Account updated successfully' : 'Payout account added successfully');
     onClose();
   };
 

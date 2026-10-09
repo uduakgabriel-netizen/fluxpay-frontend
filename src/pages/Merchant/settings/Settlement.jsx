@@ -158,8 +158,16 @@ export default function SettlementPreferencePage() {
   };
 
   const handleAddNewAccount = async (newAcc) => {
-    const created = await addPayoutAccount(newAcc);
-    if (created?.id) setSelectedAccountId(created.id);
+    try {
+      const created = await addPayoutAccount(newAcc);
+      if (created?.id) {
+        setSelectedAccountId(created.id);
+        toast.success(`Account added: ${created.accountName}`);
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Failed to add payout account';
+      toast.error(msg);
+    }
   };
 
   return (
