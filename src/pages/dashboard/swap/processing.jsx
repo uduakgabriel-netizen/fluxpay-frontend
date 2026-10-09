@@ -122,7 +122,7 @@ export default function MerchantSwapProcessingPage() {
             setCurrentStep(5);
             toast.success('Payout completed successfully!');
             setTimeout(() => {
-              router.push(`/dashboard/swap/success?transactionId=${txId}&txId=${txId}`);
+              router.push(`/dashboard/swap/success?transactionId=${txId}`);
             }, 800);
           } else if (backendStatus === 'FAILED' || backendStatus === 'REFUNDED') {
             const errMsg = res.errorMessage || res.error || 'Transaction failed during processing.';

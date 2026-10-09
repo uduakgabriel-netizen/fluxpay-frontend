@@ -183,7 +183,7 @@ export default function MerchantSwapPayoutPage() {
     }
   };
 
-  const handleContinueWithSaved = () => {
+  const handleContinue = () => {
     const acc = selectedAccount || (accounts.length > 0 ? accounts[0] : null);
     if (!acc) {
       toast.error('Please select a payout account');
@@ -192,6 +192,8 @@ export default function MerchantSwapPayoutPage() {
     setSelectedAccount(acc);
     router.push('/dashboard/swap/confirm');
   };
+
+  const handleContinueWithSaved = handleContinue;
 
   const handleContinueWithNew = async () => {
     if (!isVerified || !accountName) {
@@ -330,7 +332,7 @@ export default function MerchantSwapPayoutPage() {
                 <motion.button
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={handleContinueWithSaved}
+                  onClick={handleContinue}
                   className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
                 >
                   <span>CONTINUE TO CONFIRMATION</span>

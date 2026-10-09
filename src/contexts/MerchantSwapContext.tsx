@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 export interface SwapToken {
   symbol: string;
@@ -51,6 +51,8 @@ interface MerchantSwapContextType {
   setSourceToken: (token: SwapToken) => void;
   sourceAmount: string;
   setSourceAmount: (amount: string) => void;
+  sourceMint: string;
+  setSourceMint: (mint: string) => void;
   fiatCurrency: SwapFiat;
   setFiatCurrency: (fiat: SwapFiat) => void;
   activeQuote: SwapQuote | null;
@@ -59,6 +61,7 @@ interface MerchantSwapContextType {
   setSelectedAccount: (account: SwapAccount | null) => void;
   transactionId: string;
   setTransactionId: (txId: string) => void;
+  resetSwapState: () => void;
   resetSwapFlow: () => void;
   isHydrated: boolean;
 }
@@ -72,67 +75,132 @@ const DEFAULT_TOKEN: SwapToken = {
 };
 
 const DEFAULT_FIAT: SwapFiat = {
-  code: 'EUR',
-  symbol: '€',
-  name: 'Euro',
+  code: 'NGN',
+  symbol: '₦',
+  name: 'Nigerian Naira',
 };
 
 const STORAGE_KEY = 'fluxpay_merchant_swap_state';
 
+function readStoredState(): any {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 const MerchantSwapContext = createContext<MerchantSwapContextType | undefined>(undefined);
 
 export function MerchantSwapProvider({ children }: { children: React.ReactNode }) {
-  const [sourceToken, setSourceToken] = useState<SwapToken>(DEFAULT_TOKEN);
-  const [sourceAmount, setSourceAmount] = useState<string>('1');
-  const [fiatCurrency, setFiatCurrency] = useState<SwapFiat>(DEFAULT_FIAT);
-  const [activeQuote, setActiveQuote] = useState<SwapQuote | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<SwapAccount | null>(null);
-  const [transactionId, setTransactionId] = useState<string>('');
+  const [sourceToken, setSourceTokenState] = useState<SwapToken>(() => {
+    const stored = readStoredState();
+    return stored?.sourceToken || DEFAULT_TOKEN;
+  });
+
+  const [sourceAmount, setSourceAmountState] = useState<string>(() => {
+    const stored = readStoredState();
+    return stored?.sourceAmount || '1';
+  });
+
+  const [sourceMint, setSourceMintState] = useState<string>(() => {
+    const stored = readStoredState();
+    return stored?.sourceMint || stored?.sourceToken?.mint || DEFAULT_TOKEN.mint;
+  });
+
+  const [fiatCurrency, setFiatCurrencyState] = useState<SwapFiat>(() => {
+    const stored = readStoredState();
+    return stored?.fiatCurrency || DEFAULT_FIAT;
+  });
+
+  const [activeQuote, setActiveQuoteState] = useState<SwapQuote | null>(() => {
+    const stored = readStoredState();
+    return stored?.activeQuote || null;
+  });
+
+  const [selectedAccount, setSelectedAccountState] = useState<SwapAccount | null>(() => {
+    const stored = readStoredState();
+    return stored?.selectedAccount || null;
+  });
+
+  const [transactionId, setTransactionIdState] = useState<string>(() => {
+    const stored = readStoredState();
+    return stored?.transactionId || '';
+  });
+
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
 
-  // 1. Restore from sessionStorage on client-side mount
-  useEffect(() => {
+  // Sync state to sessionStorage helper
+  const syncToStorage = useCallback((patch: Record<string, any>) => {
     if (typeof window === 'undefined') return;
     try {
-      const stored = sessionStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.sourceToken) setSourceToken(parsed.sourceToken);
-        if (parsed.sourceAmount) setSourceAmount(parsed.sourceAmount);
-        if (parsed.fiatCurrency) setFiatCurrency(parsed.fiatCurrency);
-        if (parsed.activeQuote) setActiveQuote(parsed.activeQuote);
-        if (parsed.selectedAccount) setSelectedAccount(parsed.selectedAccount);
-        if (parsed.transactionId) setTransactionId(parsed.transactionId);
-      }
+      const current = readStoredState() || {};
+      const updated = { ...current, ...patch };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     } catch (err) {
-      console.warn('[MerchantSwapContext] Failed to restore swap state from sessionStorage:', err);
-    } finally {
-      setIsHydrated(true);
+      console.warn('[MerchantSwapContext] Failed to sync state to sessionStorage:', err);
     }
   }, []);
 
-  // 2. Persist to sessionStorage on state changes
-  useEffect(() => {
-    if (!isHydrated || typeof window === 'undefined') return;
-    try {
-      const payload = {
-        sourceToken,
-        sourceAmount,
-        fiatCurrency,
-        activeQuote,
-        selectedAccount,
-        transactionId,
-      };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (err) {
-      console.warn('[MerchantSwapContext] Failed to persist swap state:', err);
-    }
-  }, [sourceToken, sourceAmount, fiatCurrency, activeQuote, selectedAccount, transactionId, isHydrated]);
+  // Setters with immediate storage persistence
+  const setSourceToken = useCallback((token: SwapToken) => {
+    setSourceTokenState(token);
+    setSourceMintState(token.mint);
+    syncToStorage({ sourceToken: token, sourceMint: token.mint });
+  }, [syncToStorage]);
 
-  const resetSwapFlow = () => {
-    setActiveQuote(null);
-    setSelectedAccount(null);
-    setTransactionId('');
+  const setSourceAmount = useCallback((amount: string) => {
+    setSourceAmountState(amount);
+    syncToStorage({ sourceAmount: amount });
+  }, [syncToStorage]);
+
+  const setSourceMint = useCallback((mint: string) => {
+    setSourceMintState(mint);
+    syncToStorage({ sourceMint: mint });
+  }, [syncToStorage]);
+
+  const setFiatCurrency = useCallback((fiat: SwapFiat) => {
+    setFiatCurrencyState(fiat);
+    syncToStorage({ fiatCurrency: fiat });
+  }, [syncToStorage]);
+
+  const setActiveQuote = useCallback((quote: SwapQuote | null) => {
+    setActiveQuoteState(quote);
+    syncToStorage({ activeQuote: quote });
+  }, [syncToStorage]);
+
+  const setSelectedAccount = useCallback((account: SwapAccount | null) => {
+    setSelectedAccountState(account);
+    syncToStorage({ selectedAccount: account });
+  }, [syncToStorage]);
+
+  const setTransactionId = useCallback((txId: string) => {
+    setTransactionIdState(txId);
+    syncToStorage({ transactionId: txId });
+  }, [syncToStorage]);
+
+  // Client hydration check on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = readStoredState();
+    if (stored) {
+      if (stored.sourceToken) setSourceTokenState(stored.sourceToken);
+      if (stored.sourceAmount) setSourceAmountState(stored.sourceAmount);
+      if (stored.sourceMint) setSourceMintState(stored.sourceMint);
+      if (stored.fiatCurrency) setFiatCurrencyState(stored.fiatCurrency);
+      if (stored.activeQuote) setActiveQuoteState(stored.activeQuote);
+      if (stored.selectedAccount) setSelectedAccountState(stored.selectedAccount);
+      if (stored.transactionId) setTransactionIdState(stored.transactionId);
+    }
+    setIsHydrated(true);
+  }, []);
+
+  const resetSwapState = useCallback(() => {
+    setActiveQuoteState(null);
+    setSelectedAccountState(null);
+    setTransactionIdState('');
     if (typeof window !== 'undefined') {
       try {
         sessionStorage.removeItem(STORAGE_KEY);
@@ -140,7 +208,9 @@ export function MerchantSwapProvider({ children }: { children: React.ReactNode }
         // ignore
       }
     }
-  };
+  }, []);
+
+  const resetSwapFlow = resetSwapState;
 
   return (
     <MerchantSwapContext.Provider
@@ -149,6 +219,8 @@ export function MerchantSwapProvider({ children }: { children: React.ReactNode }
         setSourceToken,
         sourceAmount,
         setSourceAmount,
+        sourceMint,
+        setSourceMint,
         fiatCurrency,
         setFiatCurrency,
         activeQuote,
@@ -157,6 +229,7 @@ export function MerchantSwapProvider({ children }: { children: React.ReactNode }
         setSelectedAccount,
         transactionId,
         setTransactionId,
+        resetSwapState,
         resetSwapFlow,
         isHydrated,
       }}

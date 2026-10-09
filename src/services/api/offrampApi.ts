@@ -86,22 +86,30 @@ export const offrampApi = {
   /**
    * Execute off-ramp: reserves quote and builds swap transaction for user signature
    */
-  async execute(quoteId: string, bankAccountId: string): Promise<ExecuteOfframpResponse> {
-    const { data } = await apiClient.post<ExecuteOfframpResponse>('/offramp/execute', {
-      quoteId,
-      bankAccountId,
-    });
+  async execute(
+    paramOrQuoteId: string | { quoteId: string; bankAccountId: string },
+    bankAccountId?: string
+  ): Promise<ExecuteOfframpResponse> {
+    const payload =
+      typeof paramOrQuoteId === 'object'
+        ? paramOrQuoteId
+        : { quoteId: paramOrQuoteId, bankAccountId: bankAccountId! };
+    const { data } = await apiClient.post<ExecuteOfframpResponse>('/offramp/execute', payload);
     return data;
   },
 
   /**
    * Submit signed transaction to complete DEX swap and trigger fiat payout
    */
-  async submit(transactionId: string, signedTransaction: string): Promise<SubmitOfframpResponse> {
-    const { data } = await apiClient.post<SubmitOfframpResponse>('/offramp/submit', {
-      transactionId,
-      signedTransaction,
-    });
+  async submit(
+    paramOrTxId: string | { transactionId: string; signedTransaction: string },
+    signedTransaction?: string
+  ): Promise<SubmitOfframpResponse> {
+    const payload =
+      typeof paramOrTxId === 'object'
+        ? paramOrTxId
+        : { transactionId: paramOrTxId, signedTransaction: signedTransaction! };
+    const { data } = await apiClient.post<SubmitOfframpResponse>('/offramp/submit', payload);
     return data;
   },
 

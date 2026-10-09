@@ -17,6 +17,7 @@ import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
 import { useToast } from '@/components/shared/Toast';
 import { useMerchantSwap } from '@/contexts/MerchantSwapContext';
+import { transactionsApi } from '@/services/api/transactionsApi';
 import { offrampApi } from '@/services/api/offrampApi';
 
 export default function MerchantSwapSuccessPage() {
@@ -28,6 +29,7 @@ export default function MerchantSwapSuccessPage() {
     selectedAccount,
     activeQuote,
     transactionId: contextTxId,
+    resetSwapState,
     resetSwapFlow,
     isHydrated,
   } = useMerchantSwap();
@@ -58,8 +60,7 @@ export default function MerchantSwapSuccessPage() {
     let mounted = true;
     setIsLoading(true);
 
-    offrampApi
-      .getById(txId)
+    (transactionsApi.getById(txId) || offrampApi.getById(txId))
       .then((res) => {
         if (!mounted) return;
         if (res) {
@@ -95,7 +96,7 @@ export default function MerchantSwapSuccessPage() {
       case 'GHS':
         return 'GH₵';
       default:
-        return code || '€';
+        return code || '₦';
     }
   };
 
@@ -124,6 +125,7 @@ export default function MerchantSwapSuccessPage() {
   };
 
   const handleBackToDashboard = () => {
+    resetSwapState();
     resetSwapFlow();
     router.push('/dashboard');
   };

@@ -68,7 +68,7 @@ export default function MerchantSwapPage() {
           setTokens(mapped);
           const defaultTok = mapped.find((m) => m.symbol === 'USDT') || mapped.find((m) => m.symbol === 'SOL') || mapped[0];
           setSelectedToken(defaultTok);
-          if (setContextToken) setContextToken(defaultTok);
+          if (setSwapContextToken) setSwapContextToken(defaultTok);
         }
       })
       .catch((err) => {

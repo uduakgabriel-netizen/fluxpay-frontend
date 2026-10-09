@@ -38,15 +38,9 @@ export default function MerchantSwapConfirmPage() {
   useEffect(() => {
     if (!isHydrated) return;
 
-    if (!activeQuote) {
-      toast.warning('Please select an amount to get a quote first');
+    if (!activeQuote || !selectedAccount) {
+      toast.warning('Please complete the previous step');
       router.replace('/dashboard/swap');
-      return;
-    }
-
-    if (!selectedAccount) {
-      toast.warning('Please select a payout account');
-      router.replace('/dashboard/swap/payout');
       return;
     }
   }, [isHydrated, activeQuote, selectedAccount, router, toast]);
@@ -78,7 +72,7 @@ export default function MerchantSwapConfirmPage() {
   }
 
   const token = sourceToken || { symbol: 'USDT' };
-  const fiat = fiatCurrency || { symbol: '€', code: 'EUR' };
+  const fiat = fiatCurrency || { symbol: '₦', code: 'NGN' };
   const account = selectedAccount;
 
   // 3. Confirm & Execute swap
@@ -91,7 +85,10 @@ export default function MerchantSwapConfirmPage() {
     setIsSubmitting(true);
     try {
       // Step A: Call POST /api/offramp/execute
-      const execRes = await offrampApi.execute(activeQuote.quoteId, selectedAccount.id);
+      const execRes = await offrampApi.execute({
+        quoteId: activeQuote.quoteId,
+        bankAccountId: selectedAccount.id,
+      });
       const txId = execRes.transactionId;
       setTransactionId(txId);
 
@@ -117,11 +114,14 @@ export default function MerchantSwapConfirmPage() {
       }
 
       // Step C: Call POST /api/offramp/submit
-      await offrampApi.submit(txId, signedTxStr);
+      await offrampApi.submit({
+        transactionId: txId,
+        signedTransaction: signedTxStr,
+      });
 
       toast.success('Swap authorized. Processing settlement...');
       // Step D: Navigate forward to processing
-      router.push(`/dashboard/swap/processing?transactionId=${txId}&txId=${txId}`);
+      router.push(`/dashboard/swap/processing?transactionId=${txId}`);
     } catch (err) {
       console.error('[MerchantSwapConfirm] Execution error:', err);
       const msg = err?.response?.data?.message || err?.message || 'Failed to authorize swap';
