@@ -72,12 +72,17 @@ export default function MerchantSwapPayoutPage() {
         const list = Array.isArray(res) ? res : (res?.accounts || []);
         setAccounts(list);
         if (list.length > 0) {
-          if (!selectedAccount) {
+          const matched = selectedAccount ? list.find((a) => a.id === selectedAccount.id) : null;
+          if (matched) {
+            setSelectedAccount(matched);
+          } else {
             const def = list.find((a) => a.isDefault) || list[0];
             setSelectedAccount(def);
           }
           setActiveTab('saved');
         } else {
+          // If no accounts on backend, clear any stale account from sessionStorage
+          setSelectedAccount(null);
           setActiveTab('new');
         }
       })
@@ -253,6 +258,7 @@ export default function MerchantSwapPayoutPage() {
       }
 
       setSelectedAccount(saved);
+      setAccounts((prev) => [saved, ...prev.filter((a) => a.id !== saved.id)]);
       setUserConfirmedName(true);
       toast.success('Account verified and saved!');
     } catch (err) {
@@ -267,9 +273,13 @@ export default function MerchantSwapPayoutPage() {
   const handleContinueWithNew = async () => {
     if (!canSave) return;
 
-    // Check if account was already saved with valid ID
-    if (selectedAccount?.id && selectedAccount?.accountNumber?.replace(/\D/g, '').endsWith(accountNumber.slice(-4))) {
-      console.log('[Save] Account already saved with ID:', selectedAccount.id);
+    // Check if this exact account was already saved with an ID from handleConfirmName
+    if (
+      selectedAccount?.id &&
+      userConfirmedName &&
+      (selectedAccount.accountNumber === accountNumber || selectedAccount.accountNumber.endsWith(accountNumber.slice(-4)))
+    ) {
+      console.log('[Save] Account already saved and confirmed with ID:', selectedAccount.id);
       router.push('/dashboard/swap/confirm');
       return;
     }
@@ -301,6 +311,7 @@ export default function MerchantSwapPayoutPage() {
       }
 
       setSelectedAccount(saved);
+      setAccounts((prev) => [saved, ...prev.filter((a) => a.id !== saved.id)]);
       toast.success('Account saved');
       router.push('/dashboard/swap/confirm');
     } catch (err) {

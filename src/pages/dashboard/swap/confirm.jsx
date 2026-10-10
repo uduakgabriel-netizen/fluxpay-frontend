@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
@@ -32,6 +32,7 @@ export default function MerchantSwapConfirmPage() {
     sourceAmount,
     fiatCurrency,
     selectedAccount,
+    setSelectedAccount,
     activeQuote,
     setTransactionId,
     refreshQuote,
@@ -42,16 +43,18 @@ export default function MerchantSwapConfirmPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeLeft, setTimeLeft] = useState(30);
 
+  const hasWarnedRef = useRef(false);
+
   // 1. Guard navigation only after hydration has loaded state from sessionStorage
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || hasWarnedRef.current) return;
 
     if (!activeQuote || !selectedAccount) {
+      hasWarnedRef.current = true;
       toast.warning('Please complete the previous step');
       router.replace('/dashboard/swap');
-      return;
     }
-  }, [isHydrated, activeQuote, selectedAccount, router, toast]);
+  }, [isHydrated, activeQuote, selectedAccount]);
 
   // 2. Real-time countdown timer from quote.expiresAt
   useEffect(() => {
@@ -170,6 +173,7 @@ export default function MerchantSwapConfirmPage() {
       ) {
         toast.error('Bank account not found. Please select a payout account again.');
         setSelectedAccount(null);
+        setIsSubmitting(false);
         router.push('/dashboard/swap/payout');
         return;
       }
