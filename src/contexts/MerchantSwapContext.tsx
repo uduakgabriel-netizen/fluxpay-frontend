@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { offrampApi } from '@/services/api/offrampApi';
 
 export interface SwapToken {
   symbol: string;
@@ -63,6 +64,8 @@ interface MerchantSwapContextType {
   setTransactionId: (txId: string) => void;
   resetSwapState: () => void;
   resetSwapFlow: () => void;
+  refreshQuote: () => Promise<SwapQuote | null>;
+  isRefreshingQuote: boolean;
   isHydrated: boolean;
 }
 
@@ -210,6 +213,45 @@ export function MerchantSwapProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  const [isRefreshingQuote, setIsRefreshingQuote] = useState<boolean>(false);
+
+  const refreshQuote = useCallback(async (): Promise<SwapQuote | null> => {
+    if (!sourceToken || !sourceAmount || !fiatCurrency) return null;
+    setIsRefreshingQuote(true);
+    try {
+      const newQuoteData = await offrampApi.getQuote({
+        sourceToken: sourceToken.symbol,
+        sourceMint: sourceMint || sourceToken.mint,
+        sourceAmount,
+        fiatCurrency: fiatCurrency.code,
+      });
+      const newQuote: SwapQuote = {
+        quoteId: newQuoteData.quoteId,
+        sourceToken: newQuoteData.sourceToken,
+        sourceAmount: newQuoteData.sourceAmount,
+        sourceMint: newQuoteData.sourceMint,
+        intermediateToken: newQuoteData.intermediateToken,
+        intermediateAmount: newQuoteData.intermediateAmount,
+        fiatCurrency: newQuoteData.fiatCurrency,
+        fiatAmount: newQuoteData.fiatAmount,
+        rate: newQuoteData.rate,
+        fee: newQuoteData.fee,
+        networkFee: newQuoteData.networkFee,
+        netAmount: newQuoteData.netAmount,
+        expiresAt: newQuoteData.expiresAt,
+        route: newQuoteData.route,
+      };
+      setActiveQuoteState(newQuote);
+      syncToStorage({ activeQuote: newQuote });
+      return newQuote;
+    } catch (err) {
+      console.error('[MerchantSwapContext] refreshQuote error:', err);
+      return null;
+    } finally {
+      setIsRefreshingQuote(false);
+    }
+  }, [sourceToken, sourceMint, sourceAmount, fiatCurrency, syncToStorage]);
+
   const resetSwapFlow = resetSwapState;
 
   return (
@@ -231,6 +273,8 @@ export function MerchantSwapProvider({ children }: { children: React.ReactNode }
         setTransactionId,
         resetSwapState,
         resetSwapFlow,
+        refreshQuote,
+        isRefreshingQuote,
         isHydrated,
       }}
     >

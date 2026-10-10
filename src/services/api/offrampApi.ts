@@ -84,16 +84,30 @@ export interface ListTransactionsResponse {
 
 export const offrampApi = {
   /**
+   * Request off-ramp conversion quote
+   */
+  async getQuote(params: {
+    sourceToken: string;
+    sourceMint: string;
+    sourceAmount: string | number;
+    fiatCurrency: string;
+  }): Promise<any> {
+    const { data } = await apiClient.post('/offramp/quote', params);
+    return data;
+  },
+
+  /**
    * Execute off-ramp: reserves quote and builds swap transaction for user signature
    */
   async execute(
-    paramOrQuoteId: string | { quoteId: string; bankAccountId: string },
-    bankAccountId?: string
+    paramOrQuoteId: string | { quoteId: string; bankAccountId: string; userPublicKey?: string },
+    bankAccountId?: string,
+    userPublicKey?: string
   ): Promise<ExecuteOfframpResponse> {
     const payload =
       typeof paramOrQuoteId === 'object'
         ? paramOrQuoteId
-        : { quoteId: paramOrQuoteId, bankAccountId: bankAccountId! };
+        : { quoteId: paramOrQuoteId, bankAccountId: bankAccountId!, userPublicKey };
     const { data } = await apiClient.post<ExecuteOfframpResponse>('/offramp/execute', payload);
     return data;
   },

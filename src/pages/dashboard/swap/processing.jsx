@@ -62,18 +62,22 @@ export default function MerchantSwapProcessingPage() {
 
   const mapBackendStepToUI = (backendStep, status) => {
     switch (status) {
+      case 'INITIATED':
       case 'PENDING':
         return 0;
       case 'AWAITING_SIGNATURE':
         return 1;
       case 'SIGNED':
+      case 'BROADCASTING':
         return 2;
       case 'SWAPPING':
         return 2;
       case 'SWAPPED':
+      case 'CRYPTO_RECEIVED':
         return 3;
       case 'PAYOUT_PENDING':
       case 'PAYOUT_PROCESSING':
+      case 'FIAT_PROCESSING':
         return 4;
       case 'COMPLETED':
         return 5;

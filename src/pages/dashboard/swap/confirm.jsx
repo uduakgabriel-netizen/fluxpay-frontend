@@ -11,7 +11,11 @@ import {
   Clock,
   Loader2,
   AlertCircle,
+  Wallet,
 } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { VersionedTransaction } from '@solana/web3.js';
 import DashboardLayout from '@/components/dashboard/layout';
 import PageTransition from '@/components/shared/PageTransition';
 import { useMerchantSwap } from '@/contexts/MerchantSwapContext';
@@ -21,6 +25,8 @@ import { useToast } from '@/components/shared/Toast';
 export default function MerchantSwapConfirmPage() {
   const router = useRouter();
   const toast = useToast();
+  const { connected, publicKey, signTransaction } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const {
     sourceToken,
     sourceAmount,
@@ -28,6 +34,8 @@ export default function MerchantSwapConfirmPage() {
     selectedAccount,
     activeQuote,
     setTransactionId,
+    refreshQuote,
+    isRefreshingQuote,
     isHydrated,
   } = useMerchantSwap();
 
@@ -59,6 +67,19 @@ export default function MerchantSwapConfirmPage() {
     return () => clearInterval(interval);
   }, [activeQuote?.expiresAt]);
 
+  // Phase 1.1: Auto-refresh quote when 30-second Jupiter quote expires
+  useEffect(() => {
+    if (timeLeft <= 0 && activeQuote && !isRefreshingQuote && !isSubmitting) {
+      refreshQuote().then((newQuote) => {
+        if (newQuote) {
+          toast.info('Quote refreshed with current market rate');
+        } else {
+          toast.warning('Quote expired. Refreshing rate...');
+        }
+      });
+    }
+  }, [timeLeft, activeQuote, isRefreshingQuote, isSubmitting, refreshQuote, toast]);
+
   // Loading state during hydration
   if (!isHydrated || !activeQuote || !selectedAccount) {
     return (
@@ -75,48 +96,61 @@ export default function MerchantSwapConfirmPage() {
   const fiat = fiatCurrency || { symbol: '₦', code: 'NGN' };
   const account = selectedAccount;
 
-  // 3. Confirm & Execute swap
+  // 3. Confirm & Execute swap with Wallet Adapter signing
   const handleConfirm = async () => {
     if (!activeQuote?.quoteId || !selectedAccount?.id) {
       toast.error('Missing quote or payout account details');
       return;
     }
 
+    if (!connected || !publicKey) {
+      toast.info('Please connect your Solana wallet to sign the transaction');
+      setWalletModalVisible(true);
+      return;
+    }
+
+    if (timeLeft <= 0 || isRefreshingQuote) {
+      toast.warning('Quote is currently refreshing. Please wait a moment...');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      // Step A: Call POST /api/offramp/execute
+      // Step A: Call POST /api/offramp/execute with userPublicKey
       const execRes = await offrampApi.execute({
         quoteId: activeQuote.quoteId,
         bankAccountId: selectedAccount.id,
+        userPublicKey: publicKey.toBase58(),
       });
       const txId = execRes.transactionId;
       setTransactionId(txId);
 
-      // Step B: Sign transaction
-      let signedTxStr = '';
-      const win = typeof window !== 'undefined' ? window : null;
-      if (win?.solana?.signTransaction && execRes.serializedTransaction) {
+      // Step B: User signs transaction using connected Solana wallet
+      let signedTxBase64 = '';
+      if (execRes.serializedTransaction) {
         try {
-          signedTxStr = execRes.serializedTransaction + '_signed';
-        } catch {
-          signedTxStr = `sig_${Date.now().toString(36)}`;
-        }
-      } else if (win?.solana?.signMessage) {
-        try {
-          const encoded = new TextEncoder().encode(`FluxPay Authorization: ${txId}`);
-          const sig = await win.solana.signMessage(encoded, 'utf8');
-          signedTxStr = sig?.signature ? Buffer.from(sig.signature).toString('hex') : `sig_${Date.now().toString(36)}`;
-        } catch {
-          signedTxStr = `sig_${Date.now().toString(36)}`;
+          const txBuf = Buffer.from(execRes.serializedTransaction, 'base64');
+          const versionedTx = VersionedTransaction.deserialize(txBuf);
+          if (signTransaction) {
+            const userSignedTx = await signTransaction(versionedTx);
+            signedTxBase64 = Buffer.from(userSignedTx.serialize()).toString('base64');
+          } else {
+            signedTxBase64 = execRes.serializedTransaction;
+          }
+        } catch (signErr) {
+          console.error('[MerchantSwapConfirm] Wallet signing error:', signErr);
+          toast.error('Transaction signature cancelled or rejected');
+          setIsSubmitting(false);
+          return;
         }
       } else {
-        signedTxStr = `sig_auth_${Date.now().toString(36)}`;
+        signedTxBase64 = `sig_auth_${Date.now().toString(36)}`;
       }
 
       // Step C: Call POST /api/offramp/submit
       await offrampApi.submit({
         transactionId: txId,
-        signedTransaction: signedTxStr,
+        signedTransaction: signedTxBase64,
       });
 
       toast.success('Swap authorized. Processing settlement...');
@@ -124,7 +158,7 @@ export default function MerchantSwapConfirmPage() {
       router.push(`/dashboard/swap/processing?transactionId=${txId}`);
     } catch (err) {
       console.error('[MerchantSwapConfirm] Execution error:', err);
-      const msg = err?.response?.data?.message || err?.message || 'Failed to authorize swap';
+      const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Failed to authorize swap';
       toast.error(msg);
       setIsSubmitting(false);
     }
@@ -165,9 +199,16 @@ export default function MerchantSwapConfirmPage() {
               <Clock size={15} />
               <span>Rate Guaranteed Expiration:</span>
             </div>
-            <span className={`font-mono font-bold ${timeLeft < 10 ? 'text-amber-600 dark:text-amber-400 animate-pulse' : 'text-purple-600 dark:text-purple-400'}`}>
-              {timeLeft > 0 ? `${timeLeft}s remaining` : 'Expired — auto-refreshing'}
-            </span>
+            {isRefreshingQuote ? (
+              <span className="font-mono font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                <Loader2 size={13} className="animate-spin" />
+                Refreshing rate...
+              </span>
+            ) : (
+              <span className={`font-mono font-bold ${timeLeft < 10 ? 'text-amber-600 dark:text-amber-400 animate-pulse' : 'text-purple-600 dark:text-purple-400'}`}>
+                {timeLeft > 0 ? `${timeLeft}s remaining` : 'Refreshing rate...'}
+              </span>
+            )}
           </div>
         )}
 
@@ -263,25 +304,42 @@ export default function MerchantSwapConfirmPage() {
           </div>
 
           {/* Action CTA */}
-          <motion.button
-            whileHover={{ scale: isSubmitting ? 1 : 1.01 }}
-            whileTap={{ scale: isSubmitting ? 1 : 0.98 }}
-            onClick={handleConfirm}
-            disabled={isSubmitting || timeLeft <= 0}
-            className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-6 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>AUTHORIZING SWAP...</span>
-              </>
-            ) : (
-              <>
-                <span>CONFIRM &amp; AUTHORIZE SWAP</span>
-                <ArrowRight size={18} />
-              </>
-            )}
-          </motion.button>
+          {!connected ? (
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setWalletModalVisible(true)}
+              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-6"
+            >
+              <Wallet size={18} />
+              <span>CONNECT SOLANA WALLET TO SWAP</span>
+            </motion.button>
+          ) : (
+            <motion.button
+              whileHover={{ scale: isSubmitting || isRefreshingQuote || timeLeft <= 0 ? 1 : 1.01 }}
+              whileTap={{ scale: isSubmitting || isRefreshingQuote || timeLeft <= 0 ? 1 : 0.98 }}
+              onClick={handleConfirm}
+              disabled={isSubmitting || timeLeft <= 0 || isRefreshingQuote}
+              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-[#8B5CF6] via-indigo-600 to-[#7C3AED] hover:from-purple-600 hover:to-indigo-700 text-white font-bold text-base shadow-xl shadow-purple-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer mt-6 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>AUTHORIZING &amp; ROUTING SWAP...</span>
+                </>
+              ) : isRefreshingQuote ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>REFRESHING MARKET RATE...</span>
+                </>
+              ) : (
+                <>
+                  <span>CONFIRM &amp; AUTHORIZE SWAP</span>
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </motion.button>
+          )}
 
           <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-4">
             <ShieldCheck size={14} className="text-emerald-500" />
