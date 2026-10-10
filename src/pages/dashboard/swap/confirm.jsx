@@ -116,6 +116,9 @@ export default function MerchantSwapConfirmPage() {
 
     setIsSubmitting(true);
     try {
+      console.log('[Confirm] Account from context:', selectedAccount);
+      console.log('[Confirm] Account ID:', selectedAccount?.id);
+
       // Step A: Call POST /api/offramp/execute with userPublicKey
       const execRes = await offrampApi.execute({
         quoteId: activeQuote.quoteId,
@@ -159,6 +162,18 @@ export default function MerchantSwapConfirmPage() {
     } catch (err) {
       console.error('[MerchantSwapConfirm] Execution error:', err);
       const msg = err?.response?.data?.error || err?.response?.data?.message || err?.message || 'Failed to authorize swap';
+
+      if (
+        msg.toLowerCase().includes('bank account not found') ||
+        err?.response?.data?.code === 'NOT_FOUND' ||
+        err?.response?.status === 404
+      ) {
+        toast.error('Bank account not found. Please select a payout account again.');
+        setSelectedAccount(null);
+        router.push('/dashboard/swap/payout');
+        return;
+      }
+
       toast.error(msg);
       setIsSubmitting(false);
     }

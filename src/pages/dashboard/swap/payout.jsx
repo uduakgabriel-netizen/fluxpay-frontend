@@ -224,27 +224,88 @@ export default function MerchantSwapPayoutPage() {
 
   const handleContinueWithSaved = handleContinue;
 
-  // Fix 4: Include ALL required fields on Save
-  const handleContinueWithNew = async () => {
-    if (!canSave) return;
-
+  // Fix 5: Save immediately upon name verification ("Yes, continue")
+  const handleConfirmName = async () => {
     setIsSaving(true);
     try {
-      const newAccount = await payoutApi.createAccount({
+      console.log('[ConfirmName] Saving account immediately upon verification:', {
+        accountNumber,
+        bankCode: selectedBank?.code,
+        bankName: selectedBank?.name,
+        currency: 'NGN',
+        accountName,
+      });
+
+      const saved = await payoutApi.createAccount({
         accountNumber,
         bankCode: selectedBank.code,
         bankName: selectedBank.name,
         currency: 'NGN',
-        accountName, // ← Real name from OneLiquidity
+        accountName,
         setDefault: true,
       });
 
+      console.log('[ConfirmName] Response:', saved);
+      console.log('[ConfirmName] Saved account ID:', saved?.id);
+
+      if (!saved?.id) {
+        throw new Error('Account save failed — no ID returned');
+      }
+
+      setSelectedAccount(saved);
+      setUserConfirmedName(true);
+      toast.success('Account verified and saved!');
+    } catch (err) {
+      console.error('[ConfirmName] Failed to save account:', err);
+      toast.error('Could not save account: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Fix 1: Save First, Then Navigate ("SAVE & CONTINUE")
+  const handleContinueWithNew = async () => {
+    if (!canSave) return;
+
+    // Check if account was already saved with valid ID
+    if (selectedAccount?.id && selectedAccount?.accountNumber?.replace(/\D/g, '').endsWith(accountNumber.slice(-4))) {
+      console.log('[Save] Account already saved with ID:', selectedAccount.id);
+      router.push('/dashboard/swap/confirm');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      console.log('[Save] Payload:', {
+        accountNumber,
+        bankCode: selectedBank?.code,
+        bankName: selectedBank?.name,
+        accountName,
+        currency: 'NGN',
+      });
+
+      const saved = await payoutApi.createAccount({
+        accountNumber,
+        bankCode: selectedBank.code,
+        bankName: selectedBank.name,
+        currency: 'NGN',
+        accountName,
+        setDefault: true,
+      });
+
+      console.log('[Save] Response:', saved);
+      console.log('[Save] Saved account ID:', saved?.id);
+
+      if (!saved?.id) {
+        throw new Error('Account save failed — no ID returned');
+      }
+
+      setSelectedAccount(saved);
       toast.success('Account saved');
-      setSelectedAccount(newAccount);
       router.push('/dashboard/swap/confirm');
     } catch (err) {
-      console.error('[MerchantSwapPayout] Failed to save account:', err);
-      toast.error(err?.message || 'Failed to save account');
+      console.error('[Save] Failed:', err);
+      toast.error('Could not save account: ' + (err?.message || 'Unknown error'));
     } finally {
       setIsSaving(false);
     }
@@ -476,14 +537,21 @@ export default function MerchantSwapPayoutPage() {
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => {
-                          setUserConfirmedName(true);
-                          toast.success('Account name confirmed!');
-                        }}
-                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        onClick={handleConfirmName}
+                        disabled={isSaving}
+                        className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
-                        <Check size={14} strokeWidth={3} />
-                        <span>Yes, continue</span>
+                        {isSaving ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check size={14} strokeWidth={3} />
+                            <span>Yes, continue</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="button"
