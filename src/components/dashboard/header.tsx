@@ -73,16 +73,19 @@ export default function Header({ onMenuClick, pageTitle }: HeaderProps) {
   const unreadCount = notifications.filter((n) => !n.read).length
 
   return (
-    <header className="sticky top-0 z-30 h-[72px] bg-white/80 dark:bg-[#0B0F19]/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between px-4 md:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 h-16 sm:h-[72px] bg-white/80 dark:bg-[#0B0F19]/80 backdrop-blur-xl border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between px-3 sm:px-6 lg:px-8">
       {/* Left */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 transition-colors cursor-pointer"
+          className="md:hidden p-2 -ml-1 rounded-xl hover:bg-gray-100 dark:hover:bg-white/5 text-gray-600 dark:text-gray-400 transition-colors cursor-pointer"
+          aria-label="Open navigation menu"
         >
-          <Menu size={20} />
+          <Menu size={22} />
         </button>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h1>
+        <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-none">
+          {title}
+        </h1>
       </div>
 
       {/* Right */}
