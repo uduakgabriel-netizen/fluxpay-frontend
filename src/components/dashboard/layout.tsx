@@ -70,7 +70,7 @@ export default function DashboardLayout({ children, pageTitle = 'Dashboard' }: D
 
       {/* Main area */}
       <div
-        className={`flex-1 flex flex-col transition-all duration-300 min-w-0 w-full ${
+        className={`flex-1 flex flex-col transition-all duration-300 min-w-0 ${
           collapsed ? 'md:ml-20' : 'md:ml-64'
         }`}
       >
