@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import DashboardLayout from '@/components/dashboard/layout'
 import Link from 'next/link'
-import { User, Bell, Shield, DollarSign, SlidersHorizontal, Building2, ChevronRight } from 'lucide-react'
+import { User, Bell, Shield, DollarSign, SlidersHorizontal, Building2, ChevronRight, Copy, Check } from 'lucide-react'
 import TokenSelector from '@/components/token-selector/TokenSelector'
 import { useAuth } from '@/contexts/AuthContext'
 import { updateProfile } from '@/services/api/auth'
@@ -23,6 +23,7 @@ export default function SettingsPage() {
   const [selectedToken, setSelectedToken] = useState<Token | null>(null)
   const [savingToken, setSavingToken] = useState(false)
   const [tokenMsg, setTokenMsg] = useState('')
+  const [copiedId, setCopiedId] = useState(false)
 
   // Notification toggle states
   const [notifs, setNotifs] = useState({
@@ -172,6 +173,38 @@ export default function SettingsPage() {
                 disabled
                 className="w-full px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-500 dark:text-gray-400 outline-none cursor-not-allowed"
               />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Merchant ID</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={merchant?.id || ''}
+                  readOnly
+                  placeholder="Not assigned yet"
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.06] text-sm font-mono text-gray-700 dark:text-gray-300 outline-none select-all cursor-text"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (merchant?.id) {
+                      navigator.clipboard.writeText(merchant.id)
+                      setCopiedId(true)
+                      toast.success('Merchant ID copied to clipboard!')
+                      setTimeout(() => setCopiedId(false), 2000)
+                    }
+                  }}
+                  disabled={!merchant?.id}
+                  className="px-4 py-2.5 bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.1] border border-gray-200 dark:border-white/[0.06] rounded-xl text-gray-700 dark:text-gray-300 text-sm font-medium transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                  title="Copy Merchant ID"
+                >
+                  {copiedId ? <Check size={16} className="text-emerald-500" /> : <Copy size={16} />}
+                  <span>{copiedId ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Your unique merchant identifier for integration configs (<code className="text-[#8B5CF6]">FLUXPAY_MERCHANT_ID</code>).
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <button

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useWallet } from '@solana/wallet-adapter-react'
 import { useRouter } from 'next/router'
 import * as authApi from '@/services/api/auth'
-import { getToken, setToken, removeToken, setMerchant, getMerchant, removeMerchant, clearAuth } from '@/utils/token'
+import { getToken, setToken, removeToken, setMerchant, getMerchant, removeMerchant, clearAuth, isValidMerchantToken } from '@/utils/token'
 
 interface MerchantInfo {
   id: string
@@ -44,19 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkSession = async () => {
       const token = getToken()
-      const cachedMerchant = getMerchant()
 
-      if (!token) {
+      if (!token || !isValidMerchantToken(token)) {
+        clearAuth()
+        setIsAuthenticated(false)
+        setMerchantState(null)
         setLoading(false)
         return
-      }
-
-      // Immediately restore session from cache so user is never in a false unauthenticated state
-      if (cachedMerchant) {
-        setMerchantState(cachedMerchant)
-        setIsAuthenticated(true)
-      } else {
-        setIsAuthenticated(true)
       }
 
       try {
@@ -65,14 +59,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setMerchantState(me)
           setMerchant(me)
           setIsAuthenticated(true)
-        }
-      } catch (err) {
-        console.warn('[FluxPay] Remote session sync failed. Maintaining local session:', err);
-        if (!cachedMerchant) {
+        } else {
           clearAuth()
           setIsAuthenticated(false)
           setMerchantState(null)
         }
+      } catch (err) {
+        console.warn('[FluxPay] Session verification failed with backend, clearing auth:', err)
+        clearAuth()
+        setIsAuthenticated(false)
+        setMerchantState(null)
       } finally {
         setLoading(false)
       }
@@ -84,11 +80,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Protect dashboard routes
   useEffect(() => {
     if (loading) return
-    const isPublic = PUBLIC_PAGES.some((p) => router.pathname === p || router.pathname.startsWith('/pay/'))
-    if (!isAuthenticated && !isPublic && router.pathname.startsWith('/dashboard')) {
-      router.push('/login')
+    const isDashboard = router.pathname.startsWith('/dashboard') || router.pathname.startsWith('/Merchant')
+    const token = getToken()
+    const isTokenValid = isValidMerchantToken(token)
+
+    if (isDashboard && (!isAuthenticated || !isTokenValid)) {
+      clearAuth()
+      router.replace('/login')
     }
-  }, [isAuthenticated, loading, router.pathname])
+  }, [isAuthenticated, loading, router.pathname, router])
 
   const loginWithWallet = useCallback(async () => {
     if (!publicKey || !signMessage) {

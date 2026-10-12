@@ -20,6 +20,16 @@ export interface WebhookRollResponse {
   rotatedAt: string
 }
 
+export interface TestWebhookResult {
+  url: string
+  success: boolean
+  statusCode?: number
+  responseBody?: string
+  duration: number
+  message: string
+  error?: string
+}
+
 // ─── API Functions ──────────────────────────────────────────
 
 export async function getWebhookInfo(): Promise<WebhookInfo> {
@@ -33,5 +43,15 @@ export async function updateWebhookUrl(webhookUrl: string | null): Promise<void>
 
 export async function rollWebhookSecret(): Promise<WebhookRollResponse> {
   const { data } = await apiClient.post<WebhookRollResponse>('/merchants/webhook/roll')
+  return data
+}
+
+export async function generateWebhookSecret(): Promise<WebhookRollResponse> {
+  const { data } = await apiClient.post<WebhookRollResponse>('/merchants/webhook/roll')
+  return data
+}
+
+export async function sendTestWebhook(): Promise<TestWebhookResult> {
+  const { data } = await apiClient.post<TestWebhookResult>('/webhooks/test')
   return data
 }

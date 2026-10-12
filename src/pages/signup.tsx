@@ -8,6 +8,7 @@ import Navbar from '@/components/layout/Navbar'
 import Footer from '@/components/layout/Footer'
 import { usePasskey } from '@/contexts/PasskeyContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { getToken, isValidMerchantToken } from '@/utils/token'
 import TokenSelector from '@/components/token-selector/TokenSelector'
 import { SUPPORTED_TOKENS, type Token } from '@/config/tokens'
 
@@ -28,9 +29,10 @@ const SignUp: NextPage = () => {
   const [businessName, setBusinessName] = useState('')
   const [selectedToken, setSelectedToken] = useState<Token | null>(null)
 
-  // Redirect if already authenticated
+  // Redirect ONLY if authenticated with valid merchant JWT
   useEffect(() => {
-    if (isAuthenticated && !authLoading) {
+    const token = getToken()
+    if (isAuthenticated && !authLoading && isValidMerchantToken(token)) {
       router.push('/dashboard')
     }
   }, [isAuthenticated, authLoading, router])

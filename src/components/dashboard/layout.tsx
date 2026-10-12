@@ -6,6 +6,7 @@ import BottomNav from '@/components/dashboard/bottom-nav'
 import LoadingSkeleton from '@/components/dashboard/loading-skeleton'
 import Footer from '@/components/layout/Footer'
 import { useTokenGuard } from '@/hooks/useTokenGuard'
+import { getToken, clearAuth, isValidMerchantToken } from '@/utils/token'
 
 interface DashboardLayoutProps {
   children: ReactNode
@@ -22,17 +23,17 @@ export default function DashboardLayout({ children, pageTitle = 'Dashboard' }: D
   // Check token selection
   const { isTokenSelected, isLoading: tokenLoading } = useTokenGuard()
 
-  // Auth check
+  // Strict Auth check: require valid merchant JWT
   useEffect(() => {
-    const token = localStorage.getItem('sessionToken')
-    if (!token) {
-      router.push('/login')
+    const token = getToken()
+    if (!token || !isValidMerchantToken(token)) {
+      clearAuth()
+      setAuthChecked(false)
+      router.replace('/login')
       return
     }
     setAuthChecked(true)
-    // Simulate loading delay for skeleton
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
+    setLoading(false)
   }, [router])
 
   // Responsive: default collapsed on tablet (768px - 1023px), full width on desktop (>= 1024px)
@@ -54,8 +55,8 @@ export default function DashboardLayout({ children, pageTitle = 'Dashboard' }: D
     setMobileOpen(false)
   }, [router.pathname])
 
-  // Show loading if checking token selection
-  if (tokenLoading) {
+  // Show loading skeleton while checking auth or token selection
+  if (!authChecked || loading || tokenLoading) {
     return <LoadingSkeleton />
   }
 
