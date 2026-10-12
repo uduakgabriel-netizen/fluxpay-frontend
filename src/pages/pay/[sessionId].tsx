@@ -15,8 +15,8 @@ const API_BASE = typeof window !== 'undefined' && window.location.hostname === '
 
 // Jupiter API URL — configurable via env var, NOT hardcoded to mainnet
 const JUPITER_API_URL = process.env.NEXT_PUBLIC_JUPITER_API_URL || 'https://api.jup.ag/swap/v2';
-const SOLANA_NETWORK = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'mainnet-beta';
-const IS_DEVNET = SOLANA_NETWORK === 'devnet';
+const SOLANA_NETWORK = process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet';
+const IS_DEVNET = SOLANA_NETWORK === 'devnet' || SOLANA_NETWORK === 'testnet';
 
 interface SessionData {
   id: string;
