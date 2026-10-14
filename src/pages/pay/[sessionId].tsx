@@ -9,9 +9,11 @@ import { CheckCircle2, XCircle, Loader2, ArrowRight, Wallet, ExternalLink, Clock
 import { motion, AnimatePresence } from 'framer-motion';
 import TokenSelector, { Token } from '../../components/TokenSelector';
 
-const API_BASE = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-  ? (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api` : 'http://localhost:5000/api')
-  : '/api';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api`
+  : (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:5000/api'
+      : '/api');
 
 // Jupiter API URL — configurable via env var, NOT hardcoded to mainnet
 const JUPITER_API_URL = process.env.NEXT_PUBLIC_JUPITER_API_URL || 'https://api.jup.ag/swap/v2';
